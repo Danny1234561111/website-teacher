@@ -1,0 +1,219 @@
+
+$accents-blue: rgba(0, 136, 255, 1);
+$schemes-on-surface-variant: rgba(73, 69, 79, 1);
+$border-color: rgba(197, 198, 208, 1);
+$black-border: rgba(0, 0, 0, 1);
+$white: #ffffff;
+$error-red: rgba(255, 56, 60, 1);
+
+.container {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.innerContainer {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.loaderContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+// Header styles 
+.header {
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 28px;
+  box-shadow: none;
+  background-color: $white;
+  border: 0.6px solid $black-border;
+}
+
+.headerTitle {
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: 0px;
+  color: $accents-blue;
+  background: none;
+}
+
+.headerSubtitle {
+  color: $schemes-on-surface-variant;
+  font-size: 14px;
+  margin-top: 4px;
+  font-family: "Roboto-Regular", "Roboto", sans-serif;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+}
+
+// Error alert
+.errorAlert {
+  margin-bottom: 16px;
+  border-radius: 28px;
+}
+
+// Profile container
+.profileContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+// Avatar section
+.avatarSection {
+  text-align: center;
+  padding: 32px;
+  background-color: $white;
+  border-radius: 28px;
+  border: 0.6px solid $black-border;
+}
+
+.avatar {
+  width: 120px !important;
+  height: 120px !important;
+  background-color: $accents-blue !important;
+  font-size: 48px !important;
+  margin: 0 auto;
+  font-weight: 600;
+}
+
+.userName {
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 36px;
+  color: #000000;
+  margin-top: 16px;
+}
+
+.adminChip {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: $error-red;
+  border: 1px solid $error-red;
+  border-radius: 16px;
+  font-weight: 500;
+}
+
+.userChip {
+  background-color: rgba(0, 136, 255, 0.1);
+  color: $accents-blue;
+  border: 1px solid $accents-blue;
+  border-radius: 16px;
+  font-weight: 500;
+}
+
+// Info card
+.infoCard {
+  border-radius: 28px;
+  box-shadow: none;
+  border: 0.6px solid $black-border;
+  background-color: $white;
+  overflow: hidden;
+}
+
+.cardContent {
+  padding: 24px;
+}
+
+.cardTitle {
+  font-weight: 600;
+  font-size: 18px;
+  color: $accents-blue;
+  margin-bottom: 16px;
+}
+
+.divider {
+  margin-bottom: 20px;
+  border-color: $border-color;
+}
+
+.infoRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid $border-color;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.infoLabel {
+  font-size: 12px;
+  color: $schemes-on-surface-variant;
+  margin-bottom: 2px;
+}
+
+.infoValue {
+  font-size: 16px;
+  font-weight: 500;
+  color: #000000;
+}
+
+// Responsive styles
+@media (max-width: 768px) {
+  .innerContainer {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  
+  .headerTitle {
+    font-size: 22px;
+  }
+  
+  .avatarSection {
+    padding: 20px;
+  }
+  
+  .avatar {
+    width: 80px !important;
+    height: 80px !important;
+    font-size: 32px !important;
+  }
+  
+  .userName {
+    font-size: 22px;
+  }
+  
+  .cardContent {
+    padding: 16px;
+  }
+  
+  .infoRow {
+    gap: 12px;
+    padding: 8px 0;
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.container {
+  animation: fadeIn 0.3s ease-out;
+}

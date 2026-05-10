@@ -1,0 +1,520 @@
+$accents-blue: rgba(0, 136, 255, 1);
+$schemes-on-surface-variant: rgba(73, 69, 79, 1);
+$border-color: rgba(197, 198, 208, 1);
+$black-border: rgba(0, 0, 0, 1);
+$white: #ffffff;
+$gray-bg: rgb(230, 229, 229);
+$success-green: rgba(52, 199, 89, 1);
+$success-green-bg: rgba(92.85, 216.99, 124.10, 0.56);
+$error-red: rgba(255, 56, 60, 1);
+$error-red-bg: rgba(255, 171.63, 173.31, 1);
+$neutral-gray: rgba(0, 0, 0, 1);
+$neutral-gray-bg: rgba(160.60, 160.60, 160.60, 0.56);
+$filter-bg: rgba(0, 132, 255, 0.19);
+.container {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.innerContainer {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.loaderContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+// Header styles
+.header {
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 28px;
+  box-shadow: none;
+  background-color: $white;
+  border: 0.6px solid $black-border;
+}
+.headerTitle {
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: 0px;
+  color: $accents-blue;
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+}
+
+.headerSubtitle {
+  color: $schemes-on-surface-variant;
+  font-size: 14px;
+  margin-top: 4px;
+  font-family: "Roboto-Regular", "Roboto", sans-serif;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+}
+
+// Paper header with back button
+.paperHeader {
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 28px;
+  box-shadow: none;
+  background-color: $white;
+  border: 0.6px solid $black-border;
+}
+
+// Card styles
+.card {
+  border-radius: 28px;
+  box-shadow: none;
+  border: 0.6px solid $black-border;
+  background-color: $white;
+  overflow: hidden;
+}
+
+.cardContent {
+  padding: 20px;
+}
+
+.cardTitle {
+  font-weight: 600;
+  font-size: 18px;
+  color: $accents-blue;
+  margin-bottom: 16px;
+}
+
+// Status chips
+.statusChip {
+  border-radius: 16px;
+  font-weight: 400;
+  
+  &.success {
+    background-color: $success-green-bg;
+    border-color: $success-green;
+    color: #000000;
+  }
+  
+  &.error {
+    background-color: $error-red-bg;
+    border-color: $error-red;
+    color: #000000;
+  }
+  
+  &.neutral {
+    background-color: $neutral-gray-bg;
+    border-color: $neutral-gray;
+    color: #000000;
+  }
+  
+  &.info {
+    background-color: rgba(0, 136, 255, 0.2);
+    border-color: $accents-blue;
+    color: #000000;
+  }
+  
+  &.warning {
+    background-color: rgba(255, 152, 0, 0.2);
+    border-color: #ff9800;
+    color: #000000;
+  }
+}
+
+// Contact info styles
+.contactRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid $border-color;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.contactLabel {
+  min-width: 120px;
+  color: $schemes-on-surface-variant;
+  font-size: 14px;
+}
+
+.contactValue {
+  flex: 1;
+  font-size: 14px;
+  color: #000000;
+}
+
+// Additional contacts
+.additionalContactsContainer {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 16px;
+  border: 1px solid $border-color;
+}
+
+.additionalContactChip {
+  margin: 4px;
+  border-radius: 16px;
+  
+  &.telegram {
+    background-color: rgba(38, 165, 228, 0.1);
+    border-color: #26A5E4;
+    color: #26A5E4;
+  }
+  
+  &.url {
+    background-color: rgba(156, 39, 176, 0.1);
+    border-color: #9C27B0;
+    color: #9C27B0;
+  }
+}
+
+// Statuses grid (4 статуса в сетке 2x2 как в Figma)
+.statusGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.statusItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #f8f9fa;
+  border-radius: 16px;
+  border: 1px solid $border-color;
+}
+
+.statusLabel {
+  font-size: 13px;
+  color: $schemes-on-surface-variant;
+  min-width: 100px;
+}
+
+// Academic info
+.academicRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.academicIcon {
+  color: $accents-blue;
+  width: 24px;
+}
+
+.academicLabel {
+  color: $schemes-on-surface-variant;
+  font-size: 14px;
+  min-width: 100px;
+}
+
+.academicValue {
+  font-size: 14px;
+  font-weight: 500;
+  color: #000000;
+}
+
+.scoreHigh {
+  color: #4caf50;
+  font-weight: 700;
+}
+
+.scoreMedium {
+  color: #ff9800;
+  font-weight: 700;
+}
+
+.scoreLow {
+  color: #f44336;
+  font-weight: 700;
+}
+
+// Applications table
+.applicationsTable {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid $border-color;
+}
+
+.applicationsTableHeader {
+  
+  th {
+ background-color: $filter-bg;
+    font-weight: 600;
+    font-size: 14px;
+    color: #333;
+    border-bottom: 2px solid $border-color;
+    padding: 12px;
+  }
+}
+
+.applicationsTableRow {
+background-color: $gray-bg;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: #f5f5f5;
+  }
+  
+  td {
+    padding: 12px;
+    border-bottom: 1px solid $border-color;
+  }
+}
+
+// Expanded info
+.expandedContent {
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  margin: 12px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.statCard {
+  padding: 12px;
+  background-color: $white;
+  border-radius: 12px;
+  border: 1px solid $border-color;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: $schemes-on-surface-variant;
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: $accents-blue;
+}
+
+// Communications list
+.communicationsList {
+  margin-top: 16px;
+}
+
+.communicationItem {
+  padding: 12px;
+  border-bottom: 1px solid $border-color;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.communicationHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.communicationType {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: $accents-blue;
+}
+
+.communicationStatus {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  
+  &.completed {
+    background-color: $success-green-bg;
+    color: #2e7d32;
+  }
+  
+  &.planned {
+    background-color: rgba(0, 136, 255, 0.2);
+    color: $accents-blue;
+  }
+  
+  &.cancelled {
+    background-color: $error-red-bg;
+    color: #c62828;
+  }
+}
+
+.communicationDate {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: $schemes-on-surface-variant;
+}
+
+.communicationNotes {
+  font-size: 14px;
+  color: #333;
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+}
+
+// Active contact section
+.activeContactCard {
+  background-color: #f8f9fa;
+  border: 1px solid $border-color;
+  border-radius: 28px;
+}
+
+.activeContactButton {
+  border-radius: 28px;
+  text-transform: none;
+  font-weight: 500;
+  padding: 10px 20px;
+  
+  &.enable {
+    background-color: $accents-blue;
+    color: $white;
+    
+    &:hover {
+      background-color: rgba(0, 100, 200, 1);
+    }
+  }
+  
+  &.disable {
+    border-color: $error-red;
+    color: $error-red;
+    
+    &:hover {
+      background-color: rgba(255, 56, 60, 0.1);
+    }
+  }
+}
+
+// Dialogs
+.dialogPaper {
+  border-radius: 28px;
+}
+
+.dialogTitle {
+  background-color: #f8f9fa;
+  border-bottom: 2px solid $border-color;
+  padding: 16px 24px;
+}
+
+.dialogContent {
+  padding: 24px;
+}
+
+.dialogActions {
+  padding: 16px 24px;
+  border-top: 2px solid $border-color;
+}
+
+// Edit mode styles
+.editField {
+  border-radius: 16px;
+  
+  :global(.MuiOutlinedInput-root) {
+    border-radius: 16px;
+  }
+}
+
+// Responsive
+@media (max-width: 768px) {
+  .innerContainer {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  
+  .paperHeader {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .statusGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .statsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .contactRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .contactLabel {
+    min-width: auto;
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.container {
+  animation: fadeIn 0.3s ease-out;
+}
+.paperHeader {
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 28px;
+  box-shadow: none;
+  background-color: #ffffff;
+  border: 0.6px solid rgba(0, 0, 0, 1);
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.headerTitle {
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 32px;
+  color: rgba(0, 136, 255, 1);
+}

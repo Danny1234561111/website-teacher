@@ -42,11 +42,76 @@ export interface Student {
   contact_type?: string | null;
   consent_status?: boolean | null;
   total_score?: number | null;
+  position?: number | null;
   last_communication?: string | null;
   last_communication_note?: string | null;
   kurator_id?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  
+  // НОВЫЕ ПОЛЯ ДЛЯ СТАТУСОВ ИЗ FIGMA (UPPER CASE - как приходит с бекенда)
+  meeting_status?: string | null;      // NOT_MET / MET
+  call_status?: string | null;         // NOT_REACHED / REACHED
+  decision_status?: string | null;     // THINKING / DECIDED
+  documents_status?: string | null;    // NOT_SUBMITTED / ORIGINAL_SUBMITTED / WAITING_ORIGINAL / ENROLLED
+  
+  // Дополнительные поля (фронтовые метки, могут приходить с бекенда)
+  has_application?: boolean | null;
+  was_on_gathering?: boolean | null;
+  not_reached?: boolean | null;
+  thinking?: boolean | null;
+}
+
+export interface StudentApplication {
+  id: number;
+  student_id: number;
+  department_id: number;
+  department_name: string;
+  speciality_id: number;
+  speciality_name: string;
+  profile_id: number | null;
+  profile_name: string | null;
+  position: number | null;
+  priority: number | null;
+  total_score: number | null;
+  application_status: string | null;
+  consent_status: boolean;
+  participation: boolean;
+  is_main_contest: boolean;
+  // НОВЫЕ ПОЛЯ ДЛЯ ЗАЯВЛЕНИЯ
+  study_form?: string | null;
+  study_basis?: string | null;
+  study_level?: string | null;
+  budget_places_total?: number | null;
+  budget_places_filled?: number | null;
+  paid_places_total?: number | null;
+  paid_places_filled?: number | null;
+  target_places_total?: number | null;
+  target_places_filled?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompetitiveInfo {
+  position: number | null;
+  total_students: number;
+  total_enrolled: number;
+  total_submitted: number;
+  average_score: number;
+  min_score: number;
+  max_score: number;
+  passing_score: number | null;
+  student_score: number | null;
+  department_name: string | null;
+  speciality_name: string | null;
+  profile_name: string | null;
+  // НОВЫЕ ПОЛЯ ДЛЯ КОНКУРСНОЙ ИНФОРМАЦИИ
+  study_form?: string | null;
+  study_basis?: string | null;
+  budget_places_total?: number | null;
+  budget_places_filled?: number | null;
+  budget_places_free?: number | null;
+  competition?: number | null;
 }
 
 export interface AuthResponse {

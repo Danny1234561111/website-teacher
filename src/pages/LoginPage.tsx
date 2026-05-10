@@ -88,7 +88,11 @@ const LoginPage: React.FC = () => {
         }}
       >
         <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <SchoolIcon sx={{ fontSize: 80, color: 'primary.main' }} />
+          <img 
+                       src={require('../icons/login.png')} 
+                       alt="Логин" 
+                       style={{ width: 250, height: 200 }}
+                     />
           <Typography
             component="h1"
             variant="h4"
@@ -164,7 +168,12 @@ const LoginPage: React.FC = () => {
             fullWidth
             variant="contained"
             disabled={isLoading}
-            sx={{ mt: 3, mb: 2, py: 1.5 }}
+            sx={{ mt: 3, mb: 2, py: 1.5,
+            bgcolor: '#1963C4',
+            '&:hover': {
+              bgcolor: '#0e4a96',
+            }}
+          }
           >
             {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Войти'}
           </Button>

@@ -1,0 +1,511 @@
+$accents-blue: rgba(0, 136, 255, 1);
+$schemes-on-surface-variant: rgba(73, 69, 79, 1);
+$border-color: rgba(197, 198, 208, 1);
+$black-border: rgba(0, 0, 0, 1);
+$white: #ffffff;
+$gray-bg: rgb(230, 229, 229);
+$filter-bg: rgba(0, 132, 255, 0.19);
+$success-green: rgba(52, 199, 89, 1);
+$success-green-bg: rgba(92.85, 216.99, 124.10, 0.56);
+$error-red: rgba(255, 56, 60, 1);
+$error-red-bg: rgba(255, 171.63, 173.31, 1);
+$neutral-gray: rgba(0, 0, 0, 1);
+$neutral-gray-bg: rgba(160.60, 160.60, 160.60, 0.56);
+$teal-blue: rgba(57.71, 125.21, 176.54, 1);
+
+.container {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.innerContainer {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.loaderContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+// Header styles
+.header {
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 28px;
+  box-shadow: none;
+  background-color: $white;
+  border: 0.6px solid $black-border;
+}
+
+.headerTitle {
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: 0px;
+  color: $accents-blue;
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+}
+
+.headerSubtitle {
+  color: $schemes-on-surface-variant;
+  font-size: 14px;
+  margin-top: 4px;
+  font-family: "Roboto-Regular", "Roboto", sans-serif;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+}
+
+// Search section styles
+.searchSection {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.searchField {
+  flex: 1;
+  
+  :global(.MuiOutlinedInput-root) {
+    border-radius: 28px;
+    background-color: $white;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      border-color: $accents-blue;
+    }
+    
+    &:focus-within {
+      border-color: $accents-blue;
+    }
+  }
+}
+
+.filterButton {
+  border-radius: 28px;
+  text-transform: none;
+  font-weight: 500;
+  padding: 8px 20px;
+  transition: all 0.2s ease;
+  background-color: $filter-bg;
+  border-color: $border-color;
+  color: #000000;
+  
+  &:hover {
+    transform: translateY(-1px);
+    background-color: rgba(0, 132, 255, 0.3);
+  }
+}
+
+.addButton {
+  border-radius: 28px;
+  text-transform: none;
+  font-weight: 500;
+  padding: 8px 24px;
+  background-color: $accents-blue;
+  color: $white;
+  transition: all 0.2s ease;
+  box-shadow: none;
+  
+  &:hover {
+    transform: translateY(-1px);
+    background-color: rgba(0, 100, 200, 1);
+    box-shadow: none;
+  }
+}
+
+// Error alert
+.errorAlert {
+  margin-bottom: 16px;
+  border-radius: 28px;
+}
+
+// Table styles
+.tableContainer {
+  border-radius: 28px;
+  overflow-x: auto;
+  box-shadow: none;
+  border: 0.6px solid $black-border;
+  background-color: $white;
+}
+
+.table {
+  min-width: 1200px;
+  width: 100%;
+  table-layout: auto;
+}
+
+.tableHeader {
+  background-color: $filter-bg;
+  
+  :global(.MuiTableCell-root) {
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid $border-color;
+    padding: 14px 12px;
+    font-size: 16px;
+    font-family: "Roboto-Regular", "Roboto", sans-serif;
+    white-space: nowrap;
+    text-align: center; // Центрирование заголовков
+  }
+}
+
+.tableRow {
+  background-color: $gray-bg;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  
+  &:hover {
+    background-color: #f5f5f5;
+  }
+  
+  :global(.MuiTableCell-root) {
+    padding: 12px 12px;
+    border-bottom: 2px solid $border-color;
+    font-family: "Roboto-Regular", "Roboto", sans-serif;
+    vertical-align: middle;
+    text-align: center; // Центрирование всех ячеек
+  }
+}
+
+// Стили для колонки баллов
+.scoreCell {
+  font-weight: bolt;
+  min-width: 60px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.scoreHigh {
+      font-weight: 700 !important; // Добавить жирность
+  background-color: rgba(76, 175, 80, 0.3); // #4caf50 с прозрачностью 30%
+}
+
+.scoreMedium {
+      font-weight: 700 !important; // Добавить жирность
+  background-color: rgba(255, 152, 0, 0.3); // #ff9800 с прозрачностью 30%
+}
+
+.scoreLow {
+      font-weight: 700 !important; // Добавить жирность
+  background-color: rgba(244, 67, 54, 0.3); // #f44336 с прозрачностью 30%
+}
+
+// Стили для колонки ФИО
+.studentName {
+  font-weight: 500;
+  color: $accents-blue;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.studentNameCell {
+  min-width: 200px;
+  text-align: center;
+}
+
+// Стили для колонки статусов - сетка 2x2 как в Figma
+.statusContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  min-width: 200px;
+  justify-items: center; // Центрирование содержимого сетки
+}
+
+.statusChip {
+  width: 100%;
+  justify-content: center; // Центрирование текста в чипе
+  border-width: 1px;
+  border-style: solid;
+  font-weight: 400;
+  font-size: 12px;
+  
+  :global(.MuiChip-root) {
+    border-radius: 0px !important;
+  }
+  
+  :global(.MuiChip-label) {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 8px;
+    text-align: center;
+  }
+  
+  // Стили для статуса "Есть заявл." / "был на сборе" - зеленый
+  &.statusSuccess {
+    background-color: $success-green-bg;
+    border-color: $success-green;
+    color: #000000;
+  }
+  
+  // Стили для статуса "не дозвонились" - красный
+  &.statusError {
+    background-color: $error-red-bg;
+    border-color: $error-red;
+    color: #000000;
+  }
+  
+  // Стили для статуса "думает" - серый
+  &.statusNeutral {
+    background-color: $neutral-gray-bg;
+    border-color: $neutral-gray;
+    color: #000000;
+  }
+  
+  // Стили для неактивных статусов
+  &.statusInactive {
+    background-color: rgba(160.60, 160.60, 160.60, 0.30);
+    border-color: rgba(0, 0, 0, 0.3);
+    color: #000000;
+  }
+}
+
+.statusCell {
+  min-width: 220px;
+  text-align: center;
+}
+
+// Стили для колонки профиль
+.profileCell {
+  min-width: 150px;
+  max-width: 200px;
+  text-align: center;
+  
+  :global(.MuiTypography-root) {
+    white-space: normal;
+    word-break: break-word;
+    text-align: center;
+  }
+}
+
+// Стили для колонки приоритетный контакт
+.priorContactCell {
+  min-width: 130px;
+  text-align: center;
+}
+
+.priorContactChip {
+  transition: all 0.2s ease;
+  border-radius: 16px;
+  
+  &:hover {
+    transform: scale(1.02);
+    cursor: pointer;
+  }
+  
+  :global(.MuiChip-label) {
+    font-size: 12px;
+    text-align: center;
+  }
+}
+
+// Стили для колонки активный контакт
+.activeContactCell {
+  min-width: 80px;
+  text-align: center;
+}
+
+.activeContactBtn {
+  color: #ffd700;
+}
+
+.starActive {
+  color: #ffd700;
+  fill: #ffd700;
+}
+
+// Стили для колонки действия
+.actionsCell {
+  min-width: 60px;
+  text-align: center;
+}
+
+.emptyRow {
+  padding: 48px 0;
+  text-align: center;
+}
+
+// Стили для приоритетного контакта "Телеграмм" как в Figma
+.priorContactTelegram {
+  color: $teal-blue;
+  border-color: $teal-blue;
+}
+
+// Filters popover styles
+.filtersPopover {
+  margin-top: 8px;
+  border-radius: 28px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  width: 800px;
+  max-width: 90vw;
+  border: 0.6px solid rgba(0, 0, 0, 1);
+  background-color: #ffffff;
+}
+
+.filtersHeader {
+  padding: 16px 24px;
+  border-bottom: 2px solid rgba(197, 198, 208, 1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f8f9fa;
+}
+
+.filtersTitle {
+  font-weight: 600;
+  font-size: 18px;
+  color: #000000;
+}
+
+.filtersContent {
+  padding: 24px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.filterSectionTitle {
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+  font-size: 16px;
+}
+
+.chipContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.filterChip {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 16px;
+  
+  &:hover {
+    transform: scale(1.02);
+  }
+  
+  :global(.MuiChip-filled) {
+    background-color: rgba(0, 136, 255, 0.2);
+    color: rgba(0, 136, 255, 1);
+  }
+}
+
+.additionalFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+  justify-content: center;
+}
+
+.filtersFooter {
+  padding: 16px 24px;
+  border-top: 2px solid rgba(197, 198, 208, 1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+}
+
+.filtersActions {
+  display: flex;
+  gap: 8px;
+}
+
+// Active filters chips
+.activeFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 0;
+}
+
+.activeFiltersLabel {
+  color: rgba(73, 69, 79, 1);
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.clearAllBtn {
+  color: #f44336;
+  font-size: 12px;
+  
+  &:hover {
+    background-color: rgba(244, 67, 54, 0.04);
+  }
+}
+
+// Responsive styles
+@media (max-width: 1400px) {
+  .statusContainer {
+    min-width: 180px;
+    gap: 4px;
+  }
+  
+  .statusCell {
+    min-width: 190px;
+  }
+  
+  .statusChip :global(.MuiChip-label) {
+    font-size: 10px;
+  }
+  
+  .studentNameCell {
+    min-width: 180px;
+  }
+  
+  .profileCell {
+    min-width: 130px;
+  }
+}
+
+@media (max-width: 768px) {
+  .searchSection {
+    flex-direction: column;
+  }
+  
+  .header {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+  
+  .table {
+    min-width: 1000px;
+  }
+}
+
+// Animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.container {
+  animation: fadeIn 0.3s ease-out;
+}

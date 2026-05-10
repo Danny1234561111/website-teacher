@@ -28,6 +28,14 @@ import {
   Switch,
   FormControlLabel,
   Snackbar,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Collapse,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -47,47 +55,91 @@ import {
   CheckCircle as CheckCircleIcon,
   Add as AddIcon,
   Telegram as TelegramIcon,
-  WhatsApp as WhatsAppIcon,
   Sms as SmsIcon,
-  MoreHoriz as MoreHorizIcon,
+  Link as LinkIcon,
+  OpenInNew as OpenInNewIcon,
+  EmojiEvents as EmojiEventsIcon,
+  HowToReg as HowToRegIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  TrendingUp as TrendingUpIcon,
+  CloudSync as CloudSyncIcon,
+  Logout as LogoutIcon,
+  AccountCircle as AccountCircleIcon,
+  Star as StarIcon,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
-import { Student, Communication } from '../types';
+import { Student, Communication, StudentApplication, CompetitiveInfo } from '../types';
+import styles from './StudentDetailPage.module.scss';
+
+const SquareChip: React.FC<{
+  label: string;
+  size?: 'small' | 'medium';
+  sx?: any;
+  variant?: 'outlined' | 'filled';
+  onClick?: () => void;
+  onDelete?: () => void;
+  icon?: React.ReactNode;
+  color?: 'success' | 'error' | 'info' | 'warning' | 'default';
+}> = ({ label, size = 'small', sx, variant = 'outlined', onClick, onDelete, icon, color }) => {
+  return (
+    <Chip
+      label={label}
+      size={size}
+      variant={variant}
+      onClick={onClick}
+      onDelete={onDelete}
+      icon={icon}
+      color={color}
+      sx={{
+        borderRadius: '4px',
+        ...sx,
+      }}
+    />
+  );
+};
 
 const StudentDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [student, setStudent] = useState<Student | null>(null);
   const [communications, setCommunications] = useState<Communication[]>([]);
+  const [applications, setApplications] = useState<StudentApplication[]>([]);
+  const [competitiveInfoMap, setCompetitiveInfoMap] = useState<Map<number, CompetitiveInfo>>(new Map());
+  const [expandedAppId, setExpandedAppId] = useState<number | null>(null);
+  const [loadingStatsId, setLoadingStatsId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingApplications, setIsLoadingApplications] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [addCommDialogOpen, setAddCommDialogOpen] = useState(false);
+  const [additionalContactsDialogOpen, setAdditionalContactsDialogOpen] = useState(false);
+  const [additionalContacts, setAdditionalContacts] = useState<Record<string, string>>({});
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning' });
+  const [isParserRunning, setIsParserRunning] = useState(false);
+  const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
   
-  // Активный контакт с сервера
   const [serverActiveContact, setServerActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
-  // Флаг - включен ли активный контакт для ЭТОГО студента
   const [isActiveContactEnabledForThisStudent, setIsActiveContactEnabledForThisStudent] = useState(false);
   const [isActiveContactLoading, setIsActiveContactLoading] = useState(false);
 
-  // Форма редактирования
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
     prior_contact: '',
     status: 'active',
-    application_status: 'pending',
     contact_status: 'new',
-    contact_type: 'call',
     consent_status: false,
+    meeting_status: 'not_met',
+    call_status: 'not_reached',
+    decision_status: 'thinking',
+    documents_status: 'not_submitted',
   });
 
-  // Новая коммуникация
   const [newComm, setNewComm] = useState({
     communication_type: 'call',
     status: 'completed',
@@ -103,13 +155,6 @@ const StudentDetailPage: React.FC = () => {
     { value: 'withdrawn', label: 'Отчислен' },
   ];
 
-  const applicationStatusOptions = [
-    { value: 'pending', label: 'Ожидает' },
-    { value: 'accepted', label: 'Принято' },
-    { value: 'rejected', label: 'Отклонено' },
-    { value: 'paid', label: 'Оплачено' },
-  ];
-
   const contactStatusOptions = [
     { value: 'new', label: 'Новый' },
     { value: 'met', label: 'Был на встрече' },
@@ -119,57 +164,208 @@ const StudentDetailPage: React.FC = () => {
     { value: 'not_interested', label: 'Не заинтересован' },
   ];
 
-  const contactTypeOptions = [
-    { value: 'call', label: 'Звонок' },
-    { value: 'message', label: 'Сообщение' },
-    { value: 'meeting', label: 'Встреча' },
+  const meetingStatusOptions = [
+    { value: 'not_met', label: 'Не был на сборе', color: 'error' as const },
+    { value: 'met', label: 'Был на сборе', color: 'success' as const },
   ];
 
-  // Опции для приоритетного контакта (русские значения для бэкенда)
+  const callStatusOptions = [
+    { value: 'not_reached', label: 'Не дозвонились', color: 'error' as const },
+    { value: 'reached', label: 'Дозвонились', color: 'success' as const },
+  ];
+
+  const decisionStatusOptions = [
+    { value: 'thinking', label: 'Думает', color: 'warning' as const },
+    { value: 'decided', label: 'Решил поступать', color: 'success' as const },
+  ];
+
+  const documentsStatusOptions = [
+    { value: 'not_submitted', label: 'Нет заявл.', color: 'default' as const },
+    { value: 'original_submitted', label: 'Подан оригинал', color: 'success' as const },
+    { value: 'waiting_original', label: 'Ждем оригинал', color: 'warning' as const },
+    { value: 'enrolled', label: 'Зачислен', color: 'info' as const },
+  ];
+
+  const applicationStatusOptions = [
+    { value: 'pending', label: 'Ожидает' },
+    { value: 'accepted', label: 'Принято' },
+    { value: 'rejected', label: 'Отклонено' },
+    { value: 'paid', label: 'Оплачено' },
+  ];
+
   const priorContactOptions = [
     { value: '', label: 'Не указан' },
     { value: 'телеграмм', label: 'Telegram', icon: <TelegramIcon fontSize="small" /> },
-    { value: 'вк', label: 'WhatsApp', icon: <WhatsAppIcon fontSize="small" /> },
     { value: 'просто сообщения', label: 'SMS', icon: <SmsIcon fontSize="small" /> },
     { value: 'звонок', label: 'Звонок', icon: <CallIcon fontSize="small" /> },
+    { value: 'ссылка', label: 'Ссылка', icon: <LinkIcon fontSize="small" /> },
   ];
 
-  // Функция для отображения названия приоритетного контакта
   const getPriorContactDisplayLabel = (value: string): string => {
     const mapping: Record<string, string> = {
       'телеграмм': 'Telegram',
-      'вк': 'WhatsApp',
       'просто сообщения': 'SMS',
       'звонок': 'Звонок',
+      'ссылка': 'Ссылка',
     };
     return mapping[value] || 'Не указан';
   };
 
-  // Получение типа контакта из приоритетного
-  const getContactTypeFromPrior = (priorContact: string): string => {
-    if (priorContact === 'телеграмм') return 'telegram';
-    if (priorContact === 'вк') return 'whatsapp';
-    if (priorContact === 'просто сообщения') return 'sms';
-    if (priorContact === 'звонок') return 'call';
-    return 'other';
+  const getContactValue = (priorContact: string): string | null => {
+    if (priorContact === 'звонок' || priorContact === 'просто сообщения') {
+      return student?.phone || null;
+    }
+    if (priorContact === 'телеграмм') {
+      return additionalContacts.telegram || student?.phone || null;
+    }
+    if (priorContact === 'ссылка') {
+      return additionalContacts.url || null;
+    }
+    return null;
   };
 
-  // Загрузка активного контакта с сервера и проверка соответствия текущему студенту
+  const getContactTypeForApi = (priorContact: string): string => {
+    const mapping: Record<string, string> = {
+      'телеграмм': 'telegram',
+      'просто сообщения': 'sms',
+      'звонок': 'call',
+      'ссылка': 'url',
+    };
+    return mapping[priorContact] || 'other';
+  };
+
+  const getApplicationStatusText = (status: string | null): string => {
+    switch (status?.toLowerCase()) {
+      case 'pending': return 'Ожидает';
+      case 'accepted': return 'Принято';
+      case 'rejected': return 'Отклонено';
+      case 'paid': return 'Оплачено';
+      default: return status || '—';
+    }
+  };
+
+  const getApplicationStatusColor = (status: string | null): "success" | "error" | "warning" | "info" | "default" => {
+    switch (status?.toLowerCase()) {
+      case 'pending': return 'warning';
+      case 'accepted': return 'success';
+      case 'rejected': return 'error';
+      case 'paid': return 'info';
+      default: return 'default';
+    }
+  };
+
+  const getStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
+    switch (status?.toLowerCase()) {
+      case 'active': return 'success';
+      case 'inactive': return 'error';
+      case 'enrolled': return 'info';
+      default: return 'default';
+    }
+  };
+
+  const getStatusText = (status: string | null | undefined): string => {
+    switch (status?.toLowerCase()) {
+      case 'active': return 'Активный';
+      case 'inactive': return 'Неактивный';
+      case 'enrolled': return 'Зачислен';
+      case 'withdrawn': return 'Отчислен';
+      default: return status || '—';
+    }
+  };
+
+  const getContactStatusText = (status: string | null | undefined): string => {
+    const mapping: Record<string, string> = {
+      'new': 'Новый',
+      'met': 'Был на встрече',
+      'interested': 'Заинтересован',
+      'original_submitted': 'Подан оригинал',
+      'waiting_original': 'Ждем оригинал',
+      'not_interested': 'Не заинтересован',
+      'enrolled': 'Зачислен',
+      'withdrawn': 'Отозван'
+    };
+    return mapping[status?.toLowerCase() || ''] || status || '—';
+  };
+
+  // Загрузка активного контакта для навигации
+  const loadActiveContact = async () => {
+    try {
+      const contact = await apiService.getActiveContact();
+      if (contact && (contact.contact_type === 'telegram' || contact.contact_type === 'url')) {
+        setActiveContact(contact);
+      } else {
+        setActiveContact(null);
+      }
+    } catch (err) {
+      console.error('Ошибка загрузки активного контакта:', err);
+      setActiveContact(null);
+    }
+  };
+
+  const handleActiveContactClick = () => {
+    if (!activeContact) return;
+    
+    const contactType = activeContact.contact_type?.toLowerCase();
+    const contactValue = activeContact.contact_value;
+    
+    if (contactType === 'telegram') {
+      openTelegram(contactValue);
+    } else if (contactType === 'url') {
+      handleOpenLink(contactValue);
+    }
+  };
+
+  const getActiveContactIcon = () => {
+    return <StarIcon sx={{ fontSize: 20, color: '#FFD700' }} />;
+  };
+
+  const getActiveContactLabel = () => {
+    const contactType = activeContact?.contact_type?.toLowerCase();
+    switch (contactType) {
+      case 'telegram': return 'Telegram';
+      case 'url': return 'Ссылка';
+      default: return 'Активный контакт';
+    }
+  };
+
+  const runParser = async () => {
+    setIsParserRunning(true);
+    try {
+      const response = await fetch('http://158.160.67.3:8000/api/parser/run', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiService.getToken()}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await response.json();
+      setSnackbar({ open: true, message: 'Парсер запущен: ' + (data.message || 'Успешно'), severity: 'success' });
+      setTimeout(() => {
+        loadData();
+      }, 3000);
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка запуска парсера', severity: 'error' });
+    } finally {
+      setIsParserRunning(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
   const loadActiveContactState = async () => {
     try {
       const response = await apiService.getActiveContact();
       setServerActiveContact(response);
       
-      // Проверяем, соответствует ли активный контакт текущему студенту
-      if (response && student && response.contact_value === student.phone) {
+      const contactValue = getContactValue(formData.prior_contact || student?.prior_contact || '');
+      if (response && student && contactValue && response.contact_value === contactValue) {
         setIsActiveContactEnabledForThisStudent(true);
       } else {
         setIsActiveContactEnabledForThisStudent(false);
       }
-      
-      console.log('📱 Активный контакт с сервера:', response);
-      console.log('📱 Текущий студент:', student?.phone);
-      console.log('📱 Соответствует:', response?.contact_value === student?.phone);
     } catch (err) {
       console.error('Ошибка загрузки активного контакта:', err);
       setServerActiveContact(null);
@@ -177,48 +373,101 @@ const StudentDetailPage: React.FC = () => {
     }
   };
 
-  // Включение активного контакта для текущего студента
+  const loadAdditionalContacts = () => {
+    if (student?.additional_contacts) {
+      if (typeof student.additional_contacts === 'string') {
+        try {
+          setAdditionalContacts(JSON.parse(student.additional_contacts));
+        } catch {
+          setAdditionalContacts({});
+        }
+      } else {
+        setAdditionalContacts(student.additional_contacts as Record<string, string> || {});
+      }
+    } else {
+      setAdditionalContacts({});
+    }
+  };
+
+  const loadStudentApplications = async () => {
+    if (!student?.id) return;
+    setIsLoadingApplications(true);
+    try {
+      const response = await apiService.getStudentApplications(student.id);
+      setApplications(response);
+    } catch (err) {
+      console.error('Ошибка загрузки заявлений:', err);
+    } finally {
+      setIsLoadingApplications(false);
+    }
+  };
+
+  const loadCompetitiveInfoForApplication = async (app: StudentApplication) => {
+    setLoadingStatsId(app.id);
+    try {
+      const info = await apiService.getCompetitiveInfoForSpeciality(student!.id, app.speciality_id);
+      setCompetitiveInfoMap(prev => new Map(prev).set(app.speciality_id, info));
+    } catch (err) {
+      console.error(`Ошибка загрузки статистики:`, err);
+    } finally {
+      setLoadingStatsId(null);
+    }
+  };
+
+  const handleRowClick = async (app: StudentApplication) => {
+    if (expandedAppId === app.id) {
+      setExpandedAppId(null);
+    } else {
+      setExpandedAppId(app.id);
+      if (!competitiveInfoMap.has(app.speciality_id)) {
+        await loadCompetitiveInfoForApplication(app);
+      }
+    }
+  };
+
   const handleEnableActiveContact = async () => {
-    const studentPhone = student?.phone;
-    if (!studentPhone) {
-      setSnackbar({ 
-        open: true, 
-        message: 'У студента не указан номер телефона. Сначала добавьте его в форму редактирования.', 
-        severity: 'error' 
-      });
+    const priorContact = formData.prior_contact || student?.prior_contact || '';
+    const contactValue = getContactValue(priorContact);
+    
+    if (!priorContact) {
+      setSnackbar({ open: true, message: 'У студента не указан приоритетный контакт', severity: 'error' });
       return;
     }
     
-    // Определяем тип контакта из приоритетного контакта студента
-    const priorContact = formData.prior_contact || student?.prior_contact || '';
-    const contactType = getContactTypeFromPrior(priorContact);
+    if (!contactValue) {
+      let message = '';
+      if (priorContact === 'звонок' || priorContact === 'просто сообщения') {
+        message = 'У студента не указан номер телефона.';
+      } else if (priorContact === 'телеграмм') {
+        message = 'У студента не указан Telegram. Добавьте его в дополнительные контакты.';
+      } else if (priorContact === 'ссылка') {
+        message = 'У студента не указана ссылка. Добавьте её в дополнительные контакты.';
+      }
+      setSnackbar({ open: true, message, severity: 'error' });
+      return;
+    }
+    
+    const contactType = getContactTypeForApi(priorContact);
     
     setIsActiveContactLoading(true);
     try {
-      await apiService.setActiveContact(contactType, studentPhone);
-      await loadActiveContactState(); // Перезагружаем состояние с сервера
-      setSnackbar({ 
-        open: true, 
-        message: `Активный контакт включен. Способ связи: ${getPriorContactDisplayLabel(priorContact) || 'Другое'}, Номер: ${studentPhone}`, 
-        severity: 'success' 
-      });
+      await apiService.setActiveContact(contactType, contactValue);
+      await loadActiveContactState();
+      await loadActiveContact();
+      setSnackbar({ open: true, message: `Активный контакт включен. Способ: ${getPriorContactDisplayLabel(priorContact)}`, severity: 'success' });
     } catch (err: any) {
-      setSnackbar({ 
-        open: true, 
-        message: err.response?.data?.detail || 'Ошибка включения активного контакта', 
-        severity: 'error' 
-      });
+      setSnackbar({ open: true, message: err.response?.data?.detail || 'Ошибка включения', severity: 'error' });
     } finally {
       setIsActiveContactLoading(false);
     }
   };
 
-  // Выключение активного контакта
   const handleDisableActiveContact = async () => {
     setIsActiveContactLoading(true);
     try {
       await apiService.deleteActiveContact();
-      await loadActiveContactState(); // Перезагружаем состояние с сервера
+      await loadActiveContactState();
+      await loadActiveContact();
       setSnackbar({ open: true, message: 'Активный контакт выключен', severity: 'success' });
     } catch (err: any) {
       setSnackbar({ open: true, message: 'Ошибка выключения', severity: 'error' });
@@ -227,14 +476,54 @@ const StudentDetailPage: React.FC = () => {
     }
   };
 
+  const handleOpenLink = (url: string) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank');
+    } else {
+      window.open('https://' + url, '_blank');
+    }
+  };
+
+  const openTelegram = (contact: string) => {
+    if (!contact) {
+      setSnackbar({ open: true, message: 'Контакт не указан', severity: 'warning' });
+      return;
+    }
+    
+    let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
+    const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
+    
+    if (isPhoneNumber) {
+      const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
+      window.location.href = `tg://resolve?phone=${phoneNumber}`;
+    } else {
+      window.location.href = `tg://resolve?domain=${cleanContact}`;
+    }
+  };
+
+  const handleSaveAdditionalContacts = async () => {
+    try {
+      await apiService.updateStudent(student!.id, {
+        additional_contacts: additionalContacts,
+      });
+      setAdditionalContactsDialogOpen(false);
+      setSnackbar({ open: true, message: 'Дополнительные контакты сохранены', severity: 'success' });
+      await loadData();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка сохранения', severity: 'error' });
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadActiveContact();
   }, [id]);
 
-  // Отдельный эффект для загрузки активного контакта после загрузки студента
   useEffect(() => {
     if (student) {
+      loadAdditionalContacts();
       loadActiveContactState();
+      loadStudentApplications();
     }
   }, [student]);
 
@@ -247,6 +536,14 @@ const StudentDetailPage: React.FC = () => {
         apiService.getStudent(parseInt(id)),
         apiService.getStudentCommunications(parseInt(id)),
       ]);
+      
+      console.log('📥 Загруженные данные студента:', {
+        meeting_status: studentData.meeting_status,
+        call_status: studentData.call_status,
+        decision_status: studentData.decision_status,
+        documents_status: studentData.documents_status,
+      });
+      
       setStudent(studentData);
       setCommunications(commsData);
       setFormData({
@@ -254,10 +551,12 @@ const StudentDetailPage: React.FC = () => {
         phone: studentData.phone || '',
         prior_contact: studentData.prior_contact || '',
         status: studentData.status || 'active',
-        application_status: studentData.application_status || 'pending',
         contact_status: studentData.contact_status || 'new',
-        contact_type: studentData.contact_type || 'call',
         consent_status: studentData.consent_status || false,
+        meeting_status: studentData.meeting_status?.toLowerCase() || 'not_met',
+        call_status: studentData.call_status?.toLowerCase() || 'not_reached',
+        decision_status: studentData.decision_status?.toLowerCase() || 'thinking',
+        documents_status: studentData.documents_status?.toLowerCase() || 'not_submitted',
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки данных');
@@ -270,30 +569,69 @@ const StudentDetailPage: React.FC = () => {
     if (!student) return;
     setIsSaving(true);
     setError('');
+    
+    console.log('========== НАЧАЛО СОХРАНЕНИЯ ==========');
+    console.log('1. Текущий formData (НИЖНИЙ РЕГИСТР):', {
+      meeting_status: formData.meeting_status,
+      call_status: formData.call_status,
+      decision_status: formData.decision_status,
+      documents_status: formData.documents_status,
+    });
+    
     try {
       const updateData = {
         full_name: formData.full_name,
         phone: formData.phone,
         prior_contact: formData.prior_contact || null,
         status: formData.status,
-        application_status: formData.application_status,
         contact_status: formData.contact_status,
-        contact_type: formData.contact_type,
         consent_status: formData.consent_status,
+        meeting_status: formData.meeting_status ? formData.meeting_status.toUpperCase() : null,
+        call_status: formData.call_status ? formData.call_status.toUpperCase() : null,
+        decision_status: formData.decision_status ? formData.decision_status.toUpperCase() : null,
+        documents_status: formData.documents_status ? formData.documents_status.toUpperCase() : null,
       };
       
-      console.log('Отправка данных на сервер:', updateData);
+      console.log('2. Отправляемые данные (ВЕРХНИЙ РЕГИСТР):', {
+        meeting_status: updateData.meeting_status,
+        call_status: updateData.call_status,
+        decision_status: updateData.decision_status,
+        documents_status: updateData.documents_status,
+      });
       
       const updatedStudent = await apiService.updateStudent(student.id, updateData);
+      
+      console.log('3. Ответ от сервера (ВЕРХНИЙ РЕГИСТР):', {
+        meeting_status: updatedStudent.meeting_status,
+        call_status: updatedStudent.call_status,
+        decision_status: updatedStudent.decision_status,
+        documents_status: updatedStudent.documents_status,
+      });
+      
       setStudent(updatedStudent);
+      setFormData(prev => ({
+        ...prev,
+        meeting_status: updatedStudent.meeting_status?.toLowerCase() || 'not_met',
+        call_status: updatedStudent.call_status?.toLowerCase() || 'not_reached',
+        decision_status: updatedStudent.decision_status?.toLowerCase() || 'thinking',
+        documents_status: updatedStudent.documents_status?.toLowerCase() || 'not_submitted',
+      }));
+      
+      console.log('4. Обновленный formData после сохранения (НИЖНИЙ РЕГИСТР):', {
+        meeting_status: updatedStudent.meeting_status?.toLowerCase(),
+        call_status: updatedStudent.call_status?.toLowerCase(),
+        decision_status: updatedStudent.decision_status?.toLowerCase(),
+        documents_status: updatedStudent.documents_status?.toLowerCase(),
+      });
+      console.log('========== СОХРАНЕНИЕ ЗАВЕРШЕНО ==========');
+      
       setIsEditMode(false);
-      
-      // После обновления студента проверяем активный контакт
       await loadActiveContactState();
-      
+      await loadActiveContact();
       setSnackbar({ open: true, message: 'Данные сохранены', severity: 'success' });
     } catch (err: any) {
-      console.error('Ошибка сохранения:', err);
+      console.error('❌ ОШИБКА СОХРАНЕНИЯ:', err);
+      console.error('Ответ ошибки:', err.response?.data);
       setError(err.response?.data?.detail || 'Ошибка сохранения');
     } finally {
       setIsSaving(false);
@@ -307,10 +645,12 @@ const StudentDetailPage: React.FC = () => {
         phone: student.phone || '',
         prior_contact: student.prior_contact || '',
         status: student.status || 'active',
-        application_status: student.application_status || 'pending',
         contact_status: student.contact_status || 'new',
-        contact_type: student.contact_type || 'call',
         consent_status: student.consent_status || false,
+        meeting_status: student.meeting_status?.toLowerCase() || 'not_met',
+        call_status: student.call_status?.toLowerCase() || 'not_reached',
+        decision_status: student.decision_status?.toLowerCase() || 'thinking',
+        documents_status: student.documents_status?.toLowerCase() || 'not_submitted',
       });
     }
     setIsEditMode(false);
@@ -346,38 +686,16 @@ const StudentDetailPage: React.FC = () => {
       window.location.href = `tel:${student.phone}`;
     }
   };
-
-  const getStatusColor = (status?: string | null): "success" | "error" | "info" | "warning" | "default" => {
-    switch (status?.toLowerCase()) {
-      case 'active': return 'success';
-      case 'inactive': return 'error';
-      case 'enrolled': return 'info';
-      case 'pending': return 'warning';
-      case 'accepted': return 'success';
-      case 'rejected': return 'error';
-      default: return 'default';
-    }
-  };
-
-  const getStatusText = (status?: string | null): string => {
-    switch (status?.toLowerCase()) {
-      case 'active': return 'Активный';
-      case 'inactive': return 'Неактивный';
-      case 'enrolled': return 'Зачислен';
-      case 'pending': return 'Ожидает';
-      case 'accepted': return 'Принято';
-      case 'rejected': return 'Отклонено';
-      case 'paid': return 'Оплачено';
-      default: return status || '—';
-    }
-  };
-
   const getCommTypeIcon = (type: string) => {
     switch (type) {
-      case 'call': return <CallIcon />;
-      case 'meeting': return <GroupIcon />;
-      case 'email': return <EmailIcon />;
-      default: return <ChatIcon />;
+      case 'call': 
+        return <img src={require('../icons/phonecomm.png')} alt="Звонок" style={{ width: 36, height: 36 }} />;
+      case 'meeting': 
+        return <img src={require('../icons/meetingcomm.png')} alt="Встреча" style={{ width: 40, height: 40 }} />;
+      case 'email': 
+        return <img src={require('../icons/emailcomm.png')} alt="Email" style={{ width: 36, height: 36 }} />;
+      default: 
+        return <img src={require('../icons/messagecomm.png')} alt="Сообщение" style={{ width: 40, height: 40 }} />;
     }
   };
 
@@ -395,9 +713,207 @@ const StudentDetailPage: React.FC = () => {
     return `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
 
+  const renderApplications = () => {
+    if (isLoadingApplications) {
+      return (
+        <Card className={styles.card}>
+          <CardContent className={styles.cardContent} sx={{ textAlign: 'center' }}>
+            <CircularProgress size={24} />
+            <Typography variant="body2" sx={{ mt: 1 }}>Загрузка заявлений...</Typography>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (applications.length === 0) {
+      return (
+        <Card className={styles.card}>
+          <CardContent className={styles.cardContent}>
+            <Typography variant="h6" className={styles.cardTitle}>
+              Заявления на специальности
+            </Typography>
+            <Typography color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+              Нет заявлений на специальности
+            </Typography>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className={styles.card}>
+        <CardContent className={styles.cardContent}>
+          <Typography variant="h6" className={styles.cardTitle}>
+            Заявления на специальности ({applications.length})
+          </Typography>
+          
+          <TableContainer component={Paper} className={styles.applicationsTable}>
+            <Table size="small">
+              <TableHead>
+                <TableRow className={styles.applicationsTableHeader}>
+                  <TableCell style={{ width: '40px' }} />
+                  <TableCell>Специальность</TableCell>
+                  <TableCell>Профиль</TableCell>
+                  <TableCell align="center">Форма/Основа</TableCell>
+                  <TableCell align="center">Место</TableCell>
+                  <TableCell align="center">Баллы</TableCell>
+                  <TableCell align="center">Статус заявления</TableCell>
+                  <TableCell align="center">Согласие</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {applications.map((app) => (
+                  <React.Fragment key={app.id}>
+                    <TableRow 
+                      hover 
+                      onClick={() => handleRowClick(app)}
+                      className={styles.applicationsTableRow}
+                    >
+                      <TableCell align="center">
+                        <IconButton size="small">
+                          {expandedAppId === app.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        </IconButton>
+                      </TableCell>
+                      <TableCell>{app.speciality_name}</TableCell>
+                      <TableCell>{app.profile_name || '—'}</TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          {app.study_form && (
+                            <SquareChip label={app.study_form} size="small" variant="outlined" />
+                          )}
+                          {app.study_basis && (
+                            <SquareChip 
+                              label={app.study_basis} 
+                              size="small" 
+                              color={app.study_basis === 'Бюджетная' ? 'success' : app.study_basis === 'Платная' ? 'warning' : 'info'}
+                              variant="outlined"
+                            />
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        {app.position ? (
+                          <SquareChip 
+                            label={app.position} 
+                            size="small" 
+                            color={app.position <= 10 ? 'success' : app.position <= 30 ? 'warning' : 'default'}
+                          />
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {app.total_score ? (
+                          <Typography fontWeight="bold" color={app.total_score >= 200 ? 'success.main' : 'warning.main'}>
+                            {app.total_score}
+                          </Typography>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        <SquareChip 
+                          label={getApplicationStatusText(app.application_status)} 
+                          size="small"
+                          color={getApplicationStatusColor(app.application_status)}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        {app.consent_status ? (
+                          <CheckCircleIcon color="success" fontSize="small" />
+                        ) : (
+                          <CancelIcon color="error" fontSize="small" />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+                        <Collapse in={expandedAppId === app.id} timeout="auto" unmountOnExit>
+                          <Box className={styles.expandedContent}>
+                            <Typography variant="subtitle1" gutterBottom color="primary">
+                              Конкурсная информация для "{app.speciality_name}"
+                            </Typography>
+                            
+                            {loadingStatsId === app.id ? (
+                              <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                                <CircularProgress size={24} />
+                              </Box>
+                            ) : (
+                              (() => {
+                                const info = competitiveInfoMap.get(app.speciality_id);
+                                if (!info) return null;
+                                
+                                return (
+                                  <Box className={styles.statsGrid}>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Место в конкурсе</Typography>
+                                      <Typography className={styles.statValue} color={info.position && info.position <= 10 ? 'success.main' : info.position && info.position <= 30 ? 'warning.main' : 'text.primary'}>
+                                        {info.position} из {info.total_students}
+                                      </Typography>
+                                    </Box>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Зачислено</Typography>
+                                      <Typography className={styles.statValue}>
+                                        {info.total_enrolled} / {info.total_students}
+                                      </Typography>
+                                    </Box>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Подано документов</Typography>
+                                      <Typography className={styles.statValue}>
+                                        {info.total_submitted}
+                                      </Typography>
+                                    </Box>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Средний балл</Typography>
+                                      <Typography className={styles.statValue} color={info.average_score >= 200 ? 'success.main' : info.average_score >= 150 ? 'warning.main' : 'error.main'}>
+                                        {info.average_score}
+                                      </Typography>
+                                    </Box>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Проходной балл</Typography>
+                                      <Typography className={styles.statValue} color={info.passing_score && info.student_score && info.student_score >= info.passing_score ? 'success.main' : 'error.main'}>
+                                        {info.passing_score}
+                                      </Typography>
+                                    </Box>
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Ваши баллы</Typography>
+                                      <Typography className={styles.statValue} color={info.student_score && info.student_score >= 200 ? 'success.main' : info.student_score && info.student_score >= 150 ? 'warning.main' : 'error.main'}>
+                                        {info.student_score}
+                                      </Typography>
+                                    </Box>
+                                    {info.budget_places_total && (
+                                      <Box className={styles.statCard}>
+                                        <Typography className={styles.statLabel}>Бюджетных мест</Typography>
+                                        <Typography className={styles.statValue}>
+                                          {info.budget_places_filled || 0} / {info.budget_places_total}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    {info.competition && (
+                                      <Box className={styles.statCard}>
+                                        <Typography className={styles.statLabel}>Конкурс</Typography>
+                                        <Typography className={styles.statValue}>
+                                          {info.competition} чел/место
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                  </Box>
+                                );
+                              })()
+                            )}
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  </React.Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+      <Box className={styles.loaderContainer}>
         <CircularProgress />
       </Box>
     );
@@ -405,17 +921,61 @@ const StudentDetailPage: React.FC = () => {
 
   if (!student) {
     return (
-      <Container>
+      <Container className={styles.innerContainer}>
         <Alert severity="error">Студент не найден</Alert>
       </Container>
     );
   }
 
-  const hasPhone = !!student?.phone;
-  const hasPriorContact = !!(formData.prior_contact || student?.prior_contact);
+  const priorContact = formData.prior_contact || student?.prior_contact || '';
+  const contactValue = getContactValue(priorContact);
+  const hasContactValue = !!contactValue;
+  const hasPriorContact = !!priorContact;
+  const isUrlContact = priorContact === 'ссылка';
+  const isTelegramContact = priorContact === 'телеграмм';
+
+  const getDocumentsStatusLabel = (status: string | undefined) => {
+    const opt = documentsStatusOptions.find(d => d.value === status?.toLowerCase());
+    return opt?.label || 'Нет заявл.';
+  };
+
+  const getDocumentsStatusColor = (status: string | undefined) => {
+    const opt = documentsStatusOptions.find(d => d.value === status?.toLowerCase());
+    return opt?.color;
+  };
+
+  const getMeetingStatusLabel = (status: string | undefined) => {
+    const opt = meetingStatusOptions.find(m => m.value === status?.toLowerCase());
+    return opt?.label || 'Не был на сборе';
+  };
+
+  const getMeetingStatusColor = (status: string | undefined) => {
+    const opt = meetingStatusOptions.find(m => m.value === status?.toLowerCase());
+    return opt?.color;
+  };
+
+  const getCallStatusLabel = (status: string | undefined) => {
+    const opt = callStatusOptions.find(c => c.value === status?.toLowerCase());
+    return opt?.label || 'Не дозвонились';
+  };
+
+  const getCallStatusColor = (status: string | undefined) => {
+    const opt = callStatusOptions.find(c => c.value === status?.toLowerCase());
+    return opt?.color;
+  };
+
+  const getDecisionStatusLabel = (status: string | undefined) => {
+    const opt = decisionStatusOptions.find(d => d.value === status?.toLowerCase());
+    return opt?.label || 'Думает';
+  };
+
+  const getDecisionStatusColor = (status: string | undefined) => {
+    const opt = decisionStatusOptions.find(d => d.value === status?.toLowerCase());
+    return opt?.color;
+  };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
+    <Container maxWidth="lg" className={styles.innerContainer}>
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
@@ -427,11 +987,11 @@ const StudentDetailPage: React.FC = () => {
         </Alert>
       </Snackbar>
 
-      {/* Header */}
-      <Paper sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Paper className={styles.paperHeader}>
         <IconButton onClick={() => navigate('/students')}>
           <ArrowBackIcon />
         </IconButton>
+        
         <Box sx={{ flex: 1 }}>
           {isEditMode ? (
             <TextField
@@ -443,7 +1003,7 @@ const StudentDetailPage: React.FC = () => {
             />
           ) : (
             <>
-              <Typography variant="h5" component="h1" fontWeight="bold">
+              <Typography variant="h5" component="h1" className={styles.headerTitle}>
                 {student.full_name}
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -452,20 +1012,67 @@ const StudentDetailPage: React.FC = () => {
             </>
           )}
         </Box>
+
+        <Box className={styles.headerActions}>
+         {activeContact && (
+                       <Tooltip title={`Активный контакт: ${getActiveContactLabel()}`}>
+                         <IconButton onClick={handleActiveContactClick} title="Активный контакт">
+                           <img 
+                             src={require('../icons/link.png')} 
+                             alt="Активный контакт" 
+                             style={{ width: 24, height: 24 }}
+                           />
+                         </IconButton>
+                       </Tooltip>
+                     )}
+                   
+                   <IconButton onClick={runParser} title="Запустить парсер" disabled={isParserRunning} color="secondary">
+                     {isParserRunning ? (
+                       <CircularProgress size={24} />
+                     ) : (
+                       <img src={require('../icons/parse2.png')} alt="Запустить парсер" style={{ width: 28, height: 28 }} />
+                     )}
+                   </IconButton>
+         
+                   <IconButton onClick={() => navigate('/profile')} title="Профиль" color="primary">
+                     <img 
+                       src={require('../icons/profile3.png')} 
+                       alt="Профиль" 
+                       style={{ width: 28, height: 28 }}
+                     />
+                 </IconButton>
+        </Box>
+
         {isEditMode ? (
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <IconButton onClick={handleCancelEdit} disabled={isSaving} color="error">
-              <CancelIcon />
-            </IconButton>
-            <IconButton onClick={handleSave} disabled={isSaving} color="primary">
-              {isSaving ? <CircularProgress size={24} /> : <SaveIcon />}
-            </IconButton>
-          </Box>
-        ) : (
-          <IconButton onClick={() => setIsEditMode(true)}>
-            <EditIcon />
-          </IconButton>
-        )}
+  <Box sx={{ display: 'flex', gap: 1 }}>
+    <IconButton onClick={() => navigate('/students')} title="Список студентов" color="primary">
+                <img 
+                  src={require('../icons/home.png')} 
+                  alt="Студенты" 
+                  style={{ width: 28, height: 28 }}
+                />
+    </IconButton>
+    <IconButton onClick={handleSave} disabled={isSaving} color="primary">
+      {isSaving ? (
+        <CircularProgress size={24} />
+      ) : (
+        <img 
+          src={require('../icons/save.png')} 
+          alt="Сохранить" 
+          style={{ width: 24, height: 24 }}
+        />
+      )}
+    </IconButton>
+  </Box>
+) : (
+  <IconButton onClick={() => setIsEditMode(true)}>
+    <img 
+      src={require('../icons/edit.png')} 
+      alt="Редактировать" 
+      style={{ width: 24, height: 24 }}
+    />
+  </IconButton>
+)}
       </Paper>
 
       {error && (
@@ -475,86 +1082,199 @@ const StudentDetailPage: React.FC = () => {
       )}
 
       <Grid container spacing={3}>
-        {/* Contact Info */}
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom color="primary">
-                Контактная информация
-              </Typography>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PhoneIcon color="action" />
-                  {isEditMode ? (
-                    <TextField
-                      label="Телефон"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      size="small"
-                      sx={{ flex: 1 }}
-                    />
-                  ) : (
+          <Card className={styles.card}>
+            <CardContent className={styles.cardContent}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" className={styles.cardTitle}>
+                  Контактная информация
+                </Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={() => setAdditionalContactsDialogOpen(true)}>
+                  Доп. контакты
+                </Button>
+              </Box>
+              
+              <Box className={styles.contactRow}>
+                <img 
+                       src={require('../icons/call.png')} 
+                       alt="Профиль" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                {isEditMode ? (
+                  <TextField
+                    label="Телефон"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    size="small"
+                    fullWidth
+                  />
+                ) : (
+                  <>
                     <Typography sx={{ flex: 1 }}>{student.phone || '—'}</Typography>
-                  )}
-                  {!isEditMode && student.phone && (
-                    <Button size="small" startIcon={<CallIcon />} onClick={handleCall}>
-                      Позвонить
-                    </Button>
-                  )}
-                </Box>
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PersonIcon color="action" />
-                  {isEditMode ? (
-                    <TextField
-                      select
-                      label="Приоритетный контакт"
-                      value={formData.prior_contact}
-                      onChange={(e) => setFormData({ ...formData, prior_contact: e.target.value })}
-                      size="small"
-                      sx={{ flex: 1 }}
-                      SelectProps={{
-                        renderValue: (selected) => {
-                          const option = priorContactOptions.find(opt => opt.value === selected);
-                          return option ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {option.icon}
-                              {option.label}
-                            </Box>
-                          ) : 'Не указан';
-                        }
-                      }}
-                    >
-                      {priorContactOptions.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {opt.icon}
-                            {opt.label}
-                          </Box>
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  ) : (
+                    {student.phone && (
+                      <Button size="small" startIcon={<CallIcon />} onClick={handleCall}>
+                        Позвонить
+                      </Button>
+                    )}
+                  </>
+                )}
+              </Box>
+              
+              <Box className={styles.contactRow}>
+                <img 
+                       src={require('../icons/profile3.png')} 
+                       alt="Профиль" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                {isEditMode ? (
+                  <TextField
+                    select
+                    label="Приоритетный контакт"
+                    value={formData.prior_contact}
+                    onChange={(e) => setFormData({ ...formData, prior_contact: e.target.value })}
+                    size="small"
+                    fullWidth
+                  >
+                    {priorContactOptions.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {opt.icon}
+                          {opt.label}
+                        </Box>
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                     <Typography>
                       Приоритетный контакт: <strong>{getPriorContactDisplayLabel(student.prior_contact || '')}</strong>
                     </Typography>
-                  )}
-                </Box>
+                    {isUrlContact && contactValue && (
+                      <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => handleOpenLink(contactValue)}>
+                        Открыть ссылку
+                      </Button>
+                    )}
+                    {isTelegramContact && contactValue && (
+                      <Button size="small" startIcon={<TelegramIcon />} onClick={() => openTelegram(contactValue)}>
+                        Открыть Telegram
+                      </Button>
+                    )}
+                  </Box>
+                )}
               </Box>
+
+              {Object.keys(additionalContacts).length > 0 && !isEditMode && (
+                <Box className={styles.additionalContactsContainer}>
+                  <Typography variant="caption" color="text.secondary">
+                    Дополнительные контакты:
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+                    {Object.entries(additionalContacts).map(([key, value]) => {
+                      if (key === 'telegram') {
+                        return (
+                          <SquareChip
+                            key={key}
+                            size="small"
+                            icon={<TelegramIcon />}
+                            label={`Telegram: ${value}`}
+                            onClick={() => openTelegram(value)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        );
+                      }
+                      if (key === 'url') {
+                        return (
+                          <SquareChip
+                            key={key}
+                            size="small"
+                            icon={<LinkIcon />}
+                            label={`Ссылка: ${value.substring(0, 30)}${value.length > 30 ? '...' : ''}`}
+                            onClick={() => handleOpenLink(value)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        );
+                      }
+                      return (
+                        <SquareChip
+                          key={key}
+                          size="small"
+                          label={`${key}: ${value}`}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Status Info */}
         <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom color="primary">
-                Статусы
+          <Card className={styles.card}>
+            <CardContent className={styles.cardContent}>
+              <Typography variant="h6" className={styles.cardTitle}>
+                Статусы студента
               </Typography>
-              <Grid container spacing={1}>
-                <Grid item xs={6}>
-                  {isEditMode ? (
+              
+              {isEditMode ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      label="Статус документов"
+                      value={formData.documents_status}
+                      onChange={(e) => setFormData({ ...formData, documents_status: e.target.value })}
+                      size="small"
+                      fullWidth
+                    >
+                      {documentsStatusOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      label="Был на сборе"
+                      value={formData.meeting_status}
+                      onChange={(e) => setFormData({ ...formData, meeting_status: e.target.value })}
+                      size="small"
+                      fullWidth
+                    >
+                      {meetingStatusOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      label="Дозвонились"
+                      value={formData.call_status}
+                      onChange={(e) => setFormData({ ...formData, call_status: e.target.value })}
+                      size="small"
+                      fullWidth
+                    >
+                      {callStatusOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      label="Решение"
+                      value={formData.decision_status}
+                      onChange={(e) => setFormData({ ...formData, decision_status: e.target.value })}
+                      size="small"
+                      fullWidth
+                    >
+                      {decisionStatusOptions.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12}>
                     <TextField
                       select
                       label="Общий статус"
@@ -567,38 +1287,8 @@ const StudentDetailPage: React.FC = () => {
                         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                       ))}
                     </TextField>
-                  ) : (
-                    <Chip
-                      label={`Общий: ${getStatusText(student.status)}`}
-                      color={getStatusColor(student.status)}
-                      size="small"
-                    />
-                  )}
-                </Grid>
-                <Grid item xs={6}>
-                  {isEditMode ? (
-                    <TextField
-                      select
-                      label="Статус заявления"
-                      value={formData.application_status}
-                      onChange={(e) => setFormData({ ...formData, application_status: e.target.value })}
-                      size="small"
-                      fullWidth
-                    >
-                      {applicationStatusOptions.map((opt) => (
-                        <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
-                      ))}
-                    </TextField>
-                  ) : (
-                    <Chip
-                      label={`Заявление: ${getStatusText(student.application_status)}`}
-                      color={getStatusColor(student.application_status)}
-                      size="small"
-                    />
-                  )}
-                </Grid>
-                <Grid item xs={6}>
-                  {isEditMode ? (
+                  </Grid>
+                  <Grid item xs={12}>
                     <TextField
                       select
                       label="Статус контакта"
@@ -611,71 +1301,103 @@ const StudentDetailPage: React.FC = () => {
                         <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                       ))}
                     </TextField>
-                  ) : (
-                    <Chip
-                      label={`Контакт: ${getStatusText(student.contact_status)}`}
-                      color={getStatusColor(student.contact_status)}
-                      size="small"
-                    />
-                  )}
-                </Grid>
-                <Grid item xs={6}>
-                  {isEditMode ? (
+                  </Grid>
+                  <Grid item xs={12}>
                     <FormControlLabel
                       control={
                         <Switch
                           checked={formData.consent_status}
                           onChange={(e) => setFormData({ ...formData, consent_status: e.target.checked })}
-                          size="small"
                         />
                       }
-                      label="Согласие"
+                      label="Согласие на зачисление"
                     />
-                  ) : (
-                    <Chip
-                      icon={student.consent_status ? <CheckCircleIcon /> : <CancelIcon />}
-                      label={`Согласие: ${student.consent_status ? 'Да' : 'Нет'}`}
-                      color={student.consent_status ? 'success' : 'error'}
-                      size="small"
-                    />
-                  )}
+                  </Grid>
                 </Grid>
-              </Grid>
+              ) : (
+                <Box className={styles.statusGrid}>
+                  <SquareChip
+                    label={getDocumentsStatusLabel(student.documents_status)}
+                    color={getDocumentsStatusColor(student.documents_status)}
+                  />
+                  <SquareChip
+                    label={getMeetingStatusLabel(student.meeting_status)}
+                    color={getMeetingStatusColor(student.meeting_status)}
+                  />
+                  <SquareChip
+                    label={getCallStatusLabel(student.call_status)}
+                    color={getCallStatusColor(student.call_status)}
+                  />
+                  <SquareChip
+                    label={getDecisionStatusLabel(student.decision_status)}
+                    color={getDecisionStatusColor(student.decision_status)}
+                  />
+                  <SquareChip
+                    label={getStatusText(student.status)}
+                    color={getStatusColor(student.status)}
+                  />
+                  <SquareChip
+                    label={getContactStatusText(student.contact_status)}
+                    variant="outlined"
+                  />
+                  <SquareChip
+                    label={`Согласие: ${student.consent_status ? 'Да' : 'Нет'}`}
+                    color={student.consent_status ? 'success' : 'error'}
+                  />
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Academic Info */}
         <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom color="primary">
+          <Card className={styles.card}>
+            <CardContent className={styles.cardContent}>
+              <Typography variant="h6" className={styles.cardTitle}>
                 Академическая информация
               </Typography>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <SchoolIcon color="action" fontSize="small" />
-                    <Typography variant="body2" color="text.secondary">Направление:</Typography>
-                    <Typography variant="body2">{student.department_name || '—'}</Typography>
+                <Grid item xs={12} sm={6} sx={{ display: 'flex', flexDirection: 'column' }}>
+                  <Box className={styles.academicRow}>
+                    <img 
+                       src={require('../icons/academic.png')} 
+                       alt="Направление" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                    <Typography className={styles.academicLabel}>Направление:</Typography>
+                    <Typography className={styles.academicValue}>{student.department_name || '—'}</Typography>
                   </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <WorkIcon color="action" fontSize="small" />
-                    <Typography variant="body2" color="text.secondary">Специальность:</Typography>
-                    <Typography variant="body2">{student.speciality_name || '—'}</Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Box className={styles.academicRow}>
+                    <img 
+                       src={require('../icons/suitcase.png')} 
+                       alt="Специальность" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                    <Typography className={styles.academicLabel}>Специальность:</Typography>
+                    <Typography className={styles.academicValue}>{student.speciality_name || '—'}</Typography>
                   </Box>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <PersonIcon color="action" fontSize="small" />
-                    <Typography variant="body2" color="text.secondary">Профиль:</Typography>
-                    <Typography variant="body2">{student.profile_name || '—'}</Typography>
+                <Grid item xs={12} sm={6} sx={{ display: 'flex', flexDirection: 'column' }}>
+                  <Box className={styles.academicRow} sx={{ alignItems: 'flex-start' }}>
+                    <img 
+                       src={require('../icons/profile3.png')} 
+                       alt="Профиль" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                    <Typography className={styles.academicLabel}>Профиль:</Typography>
+                    <Typography className={styles.academicValue}>{student.profile_name || '—'}</Typography>
                   </Box>
+                   <Box sx={{ flex: 1 }} />
                   {student.total_score && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ScoreIcon color="action" fontSize="small" />
-                      <Typography variant="body2" color="text.secondary">Баллы:</Typography>
-                      <Typography variant="body2" fontWeight="bold" color={student.total_score >= 200 ? 'success.main' : 'warning.main'}>
+                    <Box className={styles.academicRow}>
+                      <img 
+                       src={require('../icons/stats.png')} 
+                       alt="Стастистика" 
+                       style={{ width: 22, height: 22 }}
+                     />
+                      <Typography className={styles.academicLabel}>Баллы:</Typography>
+                      <Typography className={`${styles.academicValue} ${student.total_score >= 200 ? styles.scoreHigh : student.total_score >= 150 ? styles.scoreMedium : styles.scoreLow}`}>
                         {student.total_score}
                       </Typography>
                     </Box>
@@ -686,11 +1408,14 @@ const StudentDetailPage: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Активный контакт - кнопка включения/выключения */}
         <Grid item xs={12}>
-          <Card sx={{ bgcolor: 'grey.50' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom color="primary">
+          {renderApplications()}
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card className={styles.activeContactCard}>
+            <CardContent className={styles.cardContent}>
+              <Typography variant="h6" className={styles.cardTitle}>
                 Активный контакт для мобильного приложения
               </Typography>
               
@@ -698,10 +1423,10 @@ const StudentDetailPage: React.FC = () => {
                 <Button
                   variant="contained"
                   onClick={handleEnableActiveContact}
-                  disabled={!hasPhone || !hasPriorContact || isActiveContactLoading}
+                  disabled={!hasPriorContact || !hasContactValue || isActiveContactLoading}
                   startIcon={<AddIcon />}
                   fullWidth
-                  sx={{ mb: 2 }}
+                  className={styles.activeContactButton}
                 >
                   Включить активный контакт для этого студента
                 </Button>
@@ -713,50 +1438,57 @@ const StudentDetailPage: React.FC = () => {
                   disabled={isActiveContactLoading}
                   startIcon={<CancelIcon />}
                   fullWidth
-                  sx={{ mb: 2 }}
+                  className={styles.activeContactButton}
                 >
                   Выключить активный контакт
                 </Button>
               )}
               
-              {!hasPhone && (
+              {!hasPriorContact && (
                 <Alert severity="warning" sx={{ mt: 2 }}>
-                  У студента не указан номер телефона. Сначала добавьте его в форму редактирования.
-                </Alert>
-              )}
-              
-              {hasPhone && !hasPriorContact && (
-                <Alert severity="info" sx={{ mt: 2 }}>
                   У студента не указан приоритетный контакт. Сначала выберите его в форме редактирования.
                 </Alert>
               )}
               
-              {isActiveContactEnabledForThisStudent && serverActiveContact && (
-                <Alert severity="success" icon={<CheckCircleIcon />}>
-                  Активный контакт включен для этого студента.
-                  <br />
-                  Способ связи: <strong>{getPriorContactDisplayLabel(formData.prior_contact || student?.prior_contact || '') || serverActiveContact.contact_type}</strong>
-                  <br />
-                  Номер: <strong>{serverActiveContact.contact_value}</strong>
+              {hasPriorContact && !hasContactValue && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {priorContact === 'звонок' || priorContact === 'просто сообщения' 
+                    ? 'У студента не указан номер телефона.'
+                    : priorContact === 'телеграмм'
+                    ? 'У студента не указан Telegram. Добавьте его в дополнительные контакты.'
+                    : 'У студента не указана ссылка. Добавьте её в дополнительные контакты.'
+                  }
                 </Alert>
               )}
               
-              {serverActiveContact && !isActiveContactEnabledForThisStudent && serverActiveContact.contact_value !== student?.phone && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  Активный контакт установлен на другой номер (<strong>{serverActiveContact.contact_value}</strong>). 
-                  Нажмите "Включить", чтобы переключить на текущего студента.
+              {isActiveContactEnabledForThisStudent && serverActiveContact && (
+                <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mt: 2 }}>
+                  Активный контакт включен для этого студента.
+                  <br />
+                  Способ связи: <strong>{getPriorContactDisplayLabel(priorContact)}</strong>
+                  <br />
+                  Значение: <strong>{serverActiveContact.contact_value}</strong>
+                  {isUrlContact && (
+                    <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => handleOpenLink(serverActiveContact.contact_value)} sx={{ ml: 1 }}>
+                      Открыть
+                    </Button>
+                  )}
+                  {isTelegramContact && (
+                    <Button size="small" startIcon={<TelegramIcon />} onClick={() => openTelegram(serverActiveContact.contact_value)} sx={{ ml: 1 }}>
+                      Открыть в Telegram
+                    </Button>
+                  )}
                 </Alert>
               )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Communications */}
         <Grid item xs={12}>
-          <Card>
-            <CardContent>
+          <Card className={styles.card}>
+            <CardContent className={styles.cardContent}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" color="primary">
+                <Typography variant="h6" className={styles.cardTitle}>
                   История коммуникаций
                 </Typography>
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddCommDialogOpen(true)}>
@@ -769,23 +1501,23 @@ const StudentDetailPage: React.FC = () => {
                   Нет записей о коммуникациях
                 </Typography>
               ) : (
-                <List>
+                <List className={styles.communicationsList}>
                   {communications.map((comm, index) => (
                     <React.Fragment key={comm.id}>
                       {index > 0 && <Divider variant="inset" component="li" />}
-                      <ListItem alignItems="flex-start">
+                      <ListItem alignItems="flex-start" className={styles.communicationItem}>
                         <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: 'primary.light' }}>
+                          <Avatar sx={{backgroundColor: 'white'}}>
                             {getCommTypeIcon(comm.communication_type)}
                           </Avatar>
                         </ListItemAvatar>
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                              <Typography variant="subtitle1" fontWeight="bold">
+                            <Box className={styles.communicationHeader}>
+                              <Typography className={styles.communicationType}>
                                 {getCommTypeText(comm.communication_type)}
                               </Typography>
-                              <Chip
+                              <SquareChip
                                 label={comm.status === 'completed' ? 'Завершено' : comm.status === 'planned' ? 'Запланировано' : 'Отменено'}
                                 size="small"
                                 color={comm.status === 'completed' ? 'success' : comm.status === 'planned' ? 'info' : 'error'}
@@ -798,7 +1530,7 @@ const StudentDetailPage: React.FC = () => {
                                 {comm.notes}
                               </Typography>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1, flexWrap: 'wrap' }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Box className={styles.communicationDate}>
                                   <AccessTimeIcon fontSize="small" color="action" />
                                   <Typography variant="caption" color="text.secondary">
                                     {formatDateTime(comm.date_time)}
@@ -828,10 +1560,9 @@ const StudentDetailPage: React.FC = () => {
         </Grid>
       </Grid>
 
-      {/* Add Communication Dialog */}
       <Dialog open={addCommDialogOpen} onClose={() => setAddCommDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Добавить коммуникацию</DialogTitle>
-        <DialogContent>
+        <DialogTitle className={styles.dialogTitle}>Добавить коммуникацию</DialogTitle>
+        <DialogContent className={styles.dialogContent}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
               select
@@ -886,11 +1617,46 @@ const StudentDetailPage: React.FC = () => {
             />
           </Box>
         </DialogContent>
-        <DialogActions>
+        <DialogActions className={styles.dialogActions}>
           <Button onClick={() => setAddCommDialogOpen(false)}>Отмена</Button>
           <Button onClick={handleAddCommunication} variant="contained" disabled={!newComm.notes}>
             Сохранить
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={additionalContactsDialogOpen} onClose={() => setAdditionalContactsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle className={styles.dialogTitle}>Дополнительные контакты</DialogTitle>
+        <DialogContent className={styles.dialogContent}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="Telegram"
+              value={additionalContacts.telegram || ''}
+              onChange={(e) => setAdditionalContacts({ ...additionalContacts, telegram: e.target.value })}
+              fullWidth
+              placeholder="@username или номер телефона"
+              helperText="Можно указать @username или номер телефона для поиска в Telegram"
+            />
+            <TextField
+              label="Ссылка (URL)"
+              value={additionalContacts.url || ''}
+              onChange={(e) => setAdditionalContacts({ ...additionalContacts, url: e.target.value })}
+              fullWidth
+              placeholder="https://example.com/student/123"
+              helperText="Любая ссылка на страницу студента"
+            />
+            <TextField
+              label="Другой контакт"
+              value={additionalContacts.other || ''}
+              onChange={(e) => setAdditionalContacts({ ...additionalContacts, other: e.target.value })}
+              fullWidth
+              placeholder="Другой способ связи"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions className={styles.dialogActions}>
+          <Button onClick={() => setAdditionalContactsDialogOpen(false)}>Отмена</Button>
+          <Button onClick={handleSaveAdditionalContacts} variant="contained">Сохранить</Button>
         </DialogActions>
       </Dialog>
     </Container>
