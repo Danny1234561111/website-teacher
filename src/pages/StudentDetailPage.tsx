@@ -1349,65 +1349,6 @@ const StudentDetailPage: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12}>
-          <Card className={styles.card}>
-            <CardContent className={styles.cardContent}>
-              <Typography variant="h6" className={styles.cardTitle}>
-                Академическая информация
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6} sx={{ display: 'flex', flexDirection: 'column' }}>
-                  <Box className={styles.academicRow}>
-                    <img 
-                       src={require('../icons/academic.png')} 
-                       alt="Направление" 
-                       style={{ width: 22, height: 22 }}
-                     />
-                    <Typography className={styles.academicLabel}>Направление:</Typography>
-                    <Typography className={styles.academicValue}>{student.department_name || '—'}</Typography>
-                  </Box>
-                  <Box sx={{ flex: 1 }} />
-                  <Box className={styles.academicRow}>
-                    <img 
-                       src={require('../icons/suitcase.png')} 
-                       alt="Специальность" 
-                       style={{ width: 22, height: 22 }}
-                     />
-                    <Typography className={styles.academicLabel}>Специальность:</Typography>
-                    <Typography className={styles.academicValue}>{student.speciality_name || '—'}</Typography>
-                  </Box>
-                </Grid>
-                <Grid item xs={12} sm={6} sx={{ display: 'flex', flexDirection: 'column' }}>
-                  <Box className={styles.academicRow} sx={{ alignItems: 'flex-start' }}>
-                    <img 
-                       src={require('../icons/profile3.png')} 
-                       alt="Профиль" 
-                       style={{ width: 22, height: 22 }}
-                     />
-                    <Typography className={styles.academicLabel}>Профиль:</Typography>
-                    <Typography className={styles.academicValue}>{student.profile_name || '—'}</Typography>
-                  </Box>
-                   <Box sx={{ flex: 1 }} />
-                  {student.total_score && (
-                    <Box className={styles.academicRow}>
-                      <img 
-                       src={require('../icons/stats.png')} 
-                       alt="Стастистика" 
-                       style={{ width: 22, height: 22 }}
-                     />
-                      <Typography className={styles.academicLabel}>Баллы:</Typography>
-                      <Typography className={`${styles.academicValue} ${student.total_score >= 200 ? styles.scoreHigh : student.total_score >= 150 ? styles.scoreMedium : styles.scoreLow}`}>
-                        {student.total_score}
-                      </Typography>
-                    </Box>
-                  )}
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
-
         <Grid item xs={12}>
           {renderApplications()}
         </Grid>
