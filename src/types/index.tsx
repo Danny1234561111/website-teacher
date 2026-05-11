@@ -49,13 +49,11 @@ export interface Student {
   created_at?: string | null;
   updated_at?: string | null;
   
-  // НОВЫЕ ПОЛЯ ДЛЯ СТАТУСОВ ИЗ FIGMA (UPPER CASE - как приходит с бекенда)
-  meeting_status?: string | null;      // NOT_MET / MET
-  call_status?: string | null;         // NOT_REACHED / REACHED
-  decision_status?: string | null;     // THINKING / DECIDED
-  documents_status?: string | null;    // NOT_SUBMITTED / ORIGINAL_SUBMITTED / WAITING_ORIGINAL / ENROLLED
+  meeting_status?: string | null;
+  call_status?: string | null;
+  decision_status?: string | null;
+  documents_status?: string | null;
   
-  // Дополнительные поля (фронтовые метки, могут приходить с бекенда)
   has_application?: boolean | null;
   was_on_gathering?: boolean | null;
   not_reached?: boolean | null;
@@ -78,7 +76,6 @@ export interface StudentApplication {
   consent_status: boolean;
   participation: boolean;
   is_main_contest: boolean;
-  // НОВЫЕ ПОЛЯ ДЛЯ ЗАЯВЛЕНИЯ
   study_form?: string | null;
   study_basis?: string | null;
   study_level?: string | null;
@@ -105,7 +102,6 @@ export interface CompetitiveInfo {
   department_name: string | null;
   speciality_name: string | null;
   profile_name: string | null;
-  // НОВЫЕ ПОЛЯ ДЛЯ КОНКУРСНОЙ ИНФОРМАЦИИ
   study_form?: string | null;
   study_basis?: string | null;
   budget_places_total?: number | null;
@@ -114,6 +110,41 @@ export interface CompetitiveInfo {
   competition?: number | null;
 }
 
+export interface GroupStatistics {
+  group_name: string;
+  profile_id?: number | null;  // ДОБАВЬ ЭТО ПОЛЕ!
+  study_form: string | null;
+  study_basis: string | null;
+  total_applications: number;
+  applications_submitted: number;
+  enrolled: number;
+  average_score: number;
+  min_score: number;
+  max_score: number;
+  budget: {
+    total: number;
+    filled: number;
+    free: number;
+    applicants_in_range: number;
+    applicants_with_consent: number;
+    passing_score: number;
+  };
+  paid: {
+    total: number;
+    filled: number;
+    free: number;
+    applicants_with_consent: number;
+  };
+  target: {
+    total: number;
+    filled: number;
+    free: number;
+    applicants_with_consent: number;
+  };
+  competition: number;
+  passing_score_current: number;
+  passing_score_last_year: number;
+}
 export interface AuthResponse {
   access_token: string;
   token_type: string;

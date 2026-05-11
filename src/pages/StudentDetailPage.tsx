@@ -71,19 +71,29 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService } from '../services/api';
-import { Student, Communication, StudentApplication, CompetitiveInfo } from '../types';
+import { Student, Communication, StudentApplication, CompetitiveInfo, GroupStatistics } from '../types';
 import styles from './StudentDetailPage.module.scss';
-
-const SquareChip: React.FC<{
+interface SquareChipProps {
   label: string;
   size?: 'small' | 'medium';
   sx?: any;
   variant?: 'outlined' | 'filled';
   onClick?: () => void;
   onDelete?: () => void;
-  icon?: React.ReactNode;
+  icon?: React.ReactElement;  // ← поменяй React.ReactNode на React.ReactElement
   color?: 'success' | 'error' | 'info' | 'warning' | 'default';
-}> = ({ label, size = 'small', sx, variant = 'outlined', onClick, onDelete, icon, color }) => {
+}
+
+const SquareChip: React.FC<SquareChipProps> = ({ 
+  label, 
+  size = 'small', 
+  sx, 
+  variant = 'outlined', 
+  onClick, 
+  onDelete, 
+  icon, 
+  color 
+}) => {
   return (
     <Chip
       label={label}
@@ -109,8 +119,10 @@ const StudentDetailPage: React.FC = () => {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [applications, setApplications] = useState<StudentApplication[]>([]);
   const [competitiveInfoMap, setCompetitiveInfoMap] = useState<Map<number, CompetitiveInfo>>(new Map());
+  const [groupStatisticsMap, setGroupStatisticsMap] = useState<Map<number, GroupStatistics>>(new Map());
   const [expandedAppId, setExpandedAppId] = useState<number | null>(null);
   const [loadingStatsId, setLoadingStatsId] = useState<number | null>(null);
+  const [loadingGroupStatsId, setLoadingGroupStatsId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingApplications, setIsLoadingApplications] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -184,13 +196,6 @@ const StudentDetailPage: React.FC = () => {
     { value: 'original_submitted', label: 'Подан оригинал', color: 'success' as const },
     { value: 'waiting_original', label: 'Ждем оригинал', color: 'warning' as const },
     { value: 'enrolled', label: 'Зачислен', color: 'info' as const },
-  ];
-
-  const applicationStatusOptions = [
-    { value: 'pending', label: 'Ожидает' },
-    { value: 'accepted', label: 'Принято' },
-    { value: 'rejected', label: 'Отклонено' },
-    { value: 'paid', label: 'Оплачено' },
   ];
 
   const priorContactOptions = [
@@ -287,7 +292,6 @@ const StudentDetailPage: React.FC = () => {
     return mapping[status?.toLowerCase() || ''] || status || '—';
   };
 
-  // Загрузка активного контакта для навигации
   const loadActiveContact = async () => {
     try {
       const contact = await apiService.getActiveContact();
@@ -314,19 +318,14 @@ const StudentDetailPage: React.FC = () => {
       handleOpenLink(contactValue);
     }
   };
-
-  const getActiveContactIcon = () => {
-    return <StarIcon sx={{ fontSize: 20, color: '#FFD700' }} />;
-  };
-
   const getActiveContactLabel = () => {
-    const contactType = activeContact?.contact_type?.toLowerCase();
-    switch (contactType) {
-      case 'telegram': return 'Telegram';
-      case 'url': return 'Ссылка';
-      default: return 'Активный контакт';
-    }
-  };
+  const contactType = activeContact?.contact_type?.toLowerCase();
+  switch (contactType) {
+    case 'telegram': return 'Telegram';
+    case 'url': return 'Ссылка';
+    default: return 'Активный контакт';
+  }
+};
 
   const runParser = async () => {
     setIsParserRunning(true);
@@ -348,11 +347,6 @@ const StudentDetailPage: React.FC = () => {
     } finally {
       setIsParserRunning(false);
     }
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
   };
 
   const loadActiveContactState = async () => {
@@ -414,6 +408,43 @@ const StudentDetailPage: React.FC = () => {
     }
   };
 
+  const loadGroupStatistics = async (app: StudentApplication) => {
+  setLoadingGroupStatsId(app.id);
+  try {
+    const allGroupStats = await apiService.getGroupStatistics();
+    
+    // Ищем статистику по profile_id (самый точный способ)
+    let groupStat = null;
+    
+    if (app.profile_id) {
+      groupStat = allGroupStats.find(s => s.profile_id === app.profile_id);
+    }
+    
+    // Если не нашли по profile_id, ищем по названию
+    if (!groupStat && app.profile_name) {
+      groupStat = allGroupStats.find(s => 
+        s.group_name.toLowerCase().includes(app.profile_name!.toLowerCase())
+      );
+    }
+    
+    // Если всё еще не нашли, ищем по специальности
+    if (!groupStat && app.speciality_name) {
+      groupStat = allGroupStats.find(s => 
+        s.group_name.toLowerCase().includes(app.speciality_name.toLowerCase())
+      );
+    }
+    
+    if (groupStat) {
+      const key = app.profile_id || app.speciality_id;
+      setGroupStatisticsMap(prev => new Map(prev).set(key, groupStat));
+    }
+  } catch (err) {
+    console.error(`Ошибка загрузки статистики группы:`, err);
+  } finally {
+    setLoadingGroupStatsId(null);
+  }
+};
+
   const handleRowClick = async (app: StudentApplication) => {
     if (expandedAppId === app.id) {
       setExpandedAppId(null);
@@ -421,6 +452,10 @@ const StudentDetailPage: React.FC = () => {
       setExpandedAppId(app.id);
       if (!competitiveInfoMap.has(app.speciality_id)) {
         await loadCompetitiveInfoForApplication(app);
+      }
+      const statKey = app.profile_id || app.speciality_id;
+      if (!groupStatisticsMap.has(statKey)) {
+        await loadGroupStatistics(app);
       }
     }
   };
@@ -537,13 +572,6 @@ const StudentDetailPage: React.FC = () => {
         apiService.getStudentCommunications(parseInt(id)),
       ]);
       
-      console.log('📥 Загруженные данные студента:', {
-        meeting_status: studentData.meeting_status,
-        call_status: studentData.call_status,
-        decision_status: studentData.decision_status,
-        documents_status: studentData.documents_status,
-      });
-      
       setStudent(studentData);
       setCommunications(commsData);
       setFormData({
@@ -570,14 +598,6 @@ const StudentDetailPage: React.FC = () => {
     setIsSaving(true);
     setError('');
     
-    console.log('========== НАЧАЛО СОХРАНЕНИЯ ==========');
-    console.log('1. Текущий formData (НИЖНИЙ РЕГИСТР):', {
-      meeting_status: formData.meeting_status,
-      call_status: formData.call_status,
-      decision_status: formData.decision_status,
-      documents_status: formData.documents_status,
-    });
-    
     try {
       const updateData = {
         full_name: formData.full_name,
@@ -592,21 +612,7 @@ const StudentDetailPage: React.FC = () => {
         documents_status: formData.documents_status ? formData.documents_status.toUpperCase() : null,
       };
       
-      console.log('2. Отправляемые данные (ВЕРХНИЙ РЕГИСТР):', {
-        meeting_status: updateData.meeting_status,
-        call_status: updateData.call_status,
-        decision_status: updateData.decision_status,
-        documents_status: updateData.documents_status,
-      });
-      
       const updatedStudent = await apiService.updateStudent(student.id, updateData);
-      
-      console.log('3. Ответ от сервера (ВЕРХНИЙ РЕГИСТР):', {
-        meeting_status: updatedStudent.meeting_status,
-        call_status: updatedStudent.call_status,
-        decision_status: updatedStudent.decision_status,
-        documents_status: updatedStudent.documents_status,
-      });
       
       setStudent(updatedStudent);
       setFormData(prev => ({
@@ -617,21 +623,12 @@ const StudentDetailPage: React.FC = () => {
         documents_status: updatedStudent.documents_status?.toLowerCase() || 'not_submitted',
       }));
       
-      console.log('4. Обновленный formData после сохранения (НИЖНИЙ РЕГИСТР):', {
-        meeting_status: updatedStudent.meeting_status?.toLowerCase(),
-        call_status: updatedStudent.call_status?.toLowerCase(),
-        decision_status: updatedStudent.decision_status?.toLowerCase(),
-        documents_status: updatedStudent.documents_status?.toLowerCase(),
-      });
-      console.log('========== СОХРАНЕНИЕ ЗАВЕРШЕНО ==========');
-      
       setIsEditMode(false);
       await loadActiveContactState();
       await loadActiveContact();
       setSnackbar({ open: true, message: 'Данные сохранены', severity: 'success' });
     } catch (err: any) {
-      console.error('❌ ОШИБКА СОХРАНЕНИЯ:', err);
-      console.error('Ответ ошибки:', err.response?.data);
+      console.error('Ошибка сохранения:', err);
       setError(err.response?.data?.detail || 'Ошибка сохранения');
     } finally {
       setIsSaving(false);
@@ -686,6 +683,7 @@ const StudentDetailPage: React.FC = () => {
       window.location.href = `tel:${student.phone}`;
     }
   };
+  
   const getCommTypeIcon = (type: string) => {
     switch (type) {
       case 'call': 
@@ -794,7 +792,7 @@ const StudentDetailPage: React.FC = () => {
                       <TableCell align="center">
                         {app.position ? (
                           <SquareChip 
-                            label={app.position} 
+                            label={app.position?.toString() || '—'} 
                             size="small" 
                             color={app.position <= 10 ? 'success' : app.position <= 30 ? 'warning' : 'default'}
                           />
@@ -826,73 +824,117 @@ const StudentDetailPage: React.FC = () => {
                       <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
                         <Collapse in={expandedAppId === app.id} timeout="auto" unmountOnExit>
                           <Box className={styles.expandedContent}>
-                            <Typography variant="subtitle1" gutterBottom color="primary">
-                              Конкурсная информация для "{app.speciality_name}"
-                            </Typography>
-                            
-                            {loadingStatsId === app.id ? (
+                            {loadingStatsId === app.id || loadingGroupStatsId === app.id ? (
                               <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
                                 <CircularProgress size={24} />
                               </Box>
                             ) : (
                               (() => {
                                 const info = competitiveInfoMap.get(app.speciality_id);
-                                if (!info) return null;
+                                const statKey = app.profile_id || app.speciality_id;
+                                const groupStat = groupStatisticsMap.get(statKey);
+                                
+                                if (!info && !groupStat) return null;
+                                
+                                const studyBasis = app.study_basis?.toLowerCase() || '';
+                                const isBudget = studyBasis === 'бюджетная';
+                                const isPaid = studyBasis === 'платная';
+                                const isTarget = studyBasis === 'целевая';
+                                
+                                let placesTotal = 0;
+                                let placesFilled = 0;
+                                let applicantsWithConsent = 0;
+                                
+                                if (isBudget && groupStat) {
+                                  placesTotal = groupStat.budget.total;
+                                  placesFilled = groupStat.budget.filled;
+                                  applicantsWithConsent = groupStat.budget.applicants_with_consent;
+                                } else if (isPaid && groupStat) {
+                                  placesTotal = groupStat.paid.total;
+                                  placesFilled = groupStat.paid.filled;
+                                  applicantsWithConsent = groupStat.paid.applicants_with_consent;
+                                } else if (isTarget && groupStat) {
+                                  placesTotal = groupStat.target.total;
+                                  placesFilled = groupStat.target.filled;
+                                  applicantsWithConsent = groupStat.target.applicants_with_consent;
+                                }
                                 
                                 return (
                                   <Box className={styles.statsGrid}>
                                     <Box className={styles.statCard}>
                                       <Typography className={styles.statLabel}>Место в конкурсе</Typography>
-                                      <Typography className={styles.statValue} color={info.position && info.position <= 10 ? 'success.main' : info.position && info.position <= 30 ? 'warning.main' : 'text.primary'}>
-                                        {info.position} из {info.total_students}
-                                      </Typography>
-                                    </Box>
-                                    <Box className={styles.statCard}>
-                                      <Typography className={styles.statLabel}>Зачислено</Typography>
                                       <Typography className={styles.statValue}>
-                                        {info.total_enrolled} / {info.total_students}
+                                        {info?.position || '—'} из {groupStat?.total_applications || '?'}
                                       </Typography>
                                     </Box>
-                                    <Box className={styles.statCard}>
-                                      <Typography className={styles.statLabel}>Подано документов</Typography>
-                                      <Typography className={styles.statValue}>
-                                        {info.total_submitted}
-                                      </Typography>
-                                    </Box>
-                                    <Box className={styles.statCard}>
-                                      <Typography className={styles.statLabel}>Средний балл</Typography>
-                                      <Typography className={styles.statValue} color={info.average_score >= 200 ? 'success.main' : info.average_score >= 150 ? 'warning.main' : 'error.main'}>
-                                        {info.average_score}
-                                      </Typography>
-                                    </Box>
-                                    <Box className={styles.statCard}>
-                                      <Typography className={styles.statLabel}>Проходной балл</Typography>
-                                      <Typography className={styles.statValue} color={info.passing_score && info.student_score && info.student_score >= info.passing_score ? 'success.main' : 'error.main'}>
-                                        {info.passing_score}
-                                      </Typography>
-                                    </Box>
-                                    <Box className={styles.statCard}>
-                                      <Typography className={styles.statLabel}>Ваши баллы</Typography>
-                                      <Typography className={styles.statValue} color={info.student_score && info.student_score >= 200 ? 'success.main' : info.student_score && info.student_score >= 150 ? 'warning.main' : 'error.main'}>
-                                        {info.student_score}
-                                      </Typography>
-                                    </Box>
-                                    {info.budget_places_total && (
+                                    
+                                    {placesTotal > 0 && (
                                       <Box className={styles.statCard}>
-                                        <Typography className={styles.statLabel}>Бюджетных мест</Typography>
+                                        <Typography className={styles.statLabel}>
+                                          {isBudget ? 'Бюджетных мест' : isPaid ? 'Платных мест' : 'Целевых мест'}
+                                        </Typography>
                                         <Typography className={styles.statValue}>
-                                          {info.budget_places_filled || 0} / {info.budget_places_total}
+                                          {placesFilled} / {placesTotal}
                                         </Typography>
                                       </Box>
                                     )}
-                                    {info.competition && (
+                                    
+                                    {groupStat && placesTotal > 0 && (
                                       <Box className={styles.statCard}>
                                         <Typography className={styles.statLabel}>Конкурс</Typography>
                                         <Typography className={styles.statValue}>
-                                          {info.competition} чел/место
+                                          {groupStat.competition} чел/место
                                         </Typography>
                                       </Box>
                                     )}
+                                    
+                                    {groupStat && (
+                                      <Box className={styles.statCard}>
+                                        <Typography className={styles.statLabel}>Средний балл</Typography>
+                                        <Typography className={styles.statValue}>
+                                          {groupStat.average_score}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    
+                                    {groupStat && (
+                                      <Box className={styles.statCard}>
+                                        <Typography className={styles.statLabel}>Максимальный балл</Typography>
+                                        <Typography className={styles.statValue}>
+                                          {groupStat.max_score}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    
+                                    {applicantsWithConsent > 0 && (
+                                      <Box className={styles.statCard}>
+                                        <Typography className={styles.statLabel}>Подали согласие</Typography>
+                                        <Typography className={styles.statValue}>
+                                          {applicantsWithConsent}
+                                        </Typography>
+                                      </Box>
+                                    )}
+                                    
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Ваши баллы</Typography>
+                                      <Typography className={styles.statValue} color={info?.student_score && info.student_score >= 200 ? 'success.main' : 'warning.main'}>
+                                        {info?.student_score || '—'}
+                                      </Typography>
+                                    </Box>
+                                    
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Статус заявления</Typography>
+                                      <Typography className={styles.statValue}>
+                                        {getApplicationStatusText(app.application_status)}
+                                      </Typography>
+                                    </Box>
+                                    
+                                    <Box className={styles.statCard}>
+                                      <Typography className={styles.statLabel}>Согласие</Typography>
+                                      <Typography className={styles.statValue}>
+                                        {app.consent_status ? 'Да' : 'Нет'}
+                                      </Typography>
+                                    </Box>
                                   </Box>
                                 );
                               })()
@@ -1014,65 +1056,65 @@ const StudentDetailPage: React.FC = () => {
         </Box>
 
         <Box className={styles.headerActions}>
-         {activeContact && (
-                       <Tooltip title={`Активный контакт: ${getActiveContactLabel()}`}>
-                         <IconButton onClick={handleActiveContactClick} title="Активный контакт">
-                           <img 
-                             src={require('../icons/link.png')} 
-                             alt="Активный контакт" 
-                             style={{ width: 24, height: 24 }}
-                           />
-                         </IconButton>
-                       </Tooltip>
-                     )}
-                   
-                   <IconButton onClick={runParser} title="Запустить парсер" disabled={isParserRunning} color="secondary">
-                     {isParserRunning ? (
-                       <CircularProgress size={24} />
-                     ) : (
-                       <img src={require('../icons/parse2.png')} alt="Запустить парсер" style={{ width: 28, height: 28 }} />
-                     )}
-                   </IconButton>
-         
-                   <IconButton onClick={() => navigate('/profile')} title="Профиль" color="primary">
-                     <img 
-                       src={require('../icons/profile3.png')} 
-                       alt="Профиль" 
-                       style={{ width: 28, height: 28 }}
-                     />
-                 </IconButton>
+          {activeContact && (
+            <Tooltip title={`Активный контакт: ${getActiveContactLabel()}`}>
+              <IconButton onClick={handleActiveContactClick} title="Активный контакт">
+                <img 
+                  src={require('../icons/link.png')} 
+                  alt="Активный контакт" 
+                  style={{ width: 24, height: 24 }}
+                />
+              </IconButton>
+            </Tooltip>
+          )}
+          
+          <IconButton onClick={runParser} title="Запустить парсер" disabled={isParserRunning} color="secondary">
+            {isParserRunning ? (
+              <CircularProgress size={24} />
+            ) : (
+              <img src={require('../icons/parse2.png')} alt="Запустить парсер" style={{ width: 28, height: 28 }} />
+            )}
+          </IconButton>
+
+          <IconButton onClick={() => navigate('/profile')} title="Профиль" color="primary">
+            <img 
+              src={require('../icons/profile3.png')} 
+              alt="Профиль" 
+              style={{ width: 28, height: 28 }}
+            />
+          </IconButton>
         </Box>
 
         {isEditMode ? (
-  <Box sx={{ display: 'flex', gap: 1 }}>
-    <IconButton onClick={() => navigate('/students')} title="Список студентов" color="primary">
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <IconButton onClick={() => navigate('/students')} title="Список студентов" color="primary">
+              <img 
+                src={require('../icons/home.png')} 
+                alt="Студенты" 
+                style={{ width: 28, height: 28 }}
+              />
+            </IconButton>
+            <IconButton onClick={handleSave} disabled={isSaving} color="primary">
+              {isSaving ? (
+                <CircularProgress size={24} />
+              ) : (
                 <img 
-                  src={require('../icons/home.png')} 
-                  alt="Студенты" 
-                  style={{ width: 28, height: 28 }}
+                  src={require('../icons/save.png')} 
+                  alt="Сохранить" 
+                  style={{ width: 24, height: 24 }}
                 />
-    </IconButton>
-    <IconButton onClick={handleSave} disabled={isSaving} color="primary">
-      {isSaving ? (
-        <CircularProgress size={24} />
-      ) : (
-        <img 
-          src={require('../icons/save.png')} 
-          alt="Сохранить" 
-          style={{ width: 24, height: 24 }}
-        />
-      )}
-    </IconButton>
-  </Box>
-) : (
-  <IconButton onClick={() => setIsEditMode(true)}>
-    <img 
-      src={require('../icons/edit.png')} 
-      alt="Редактировать" 
-      style={{ width: 24, height: 24 }}
-    />
-  </IconButton>
-)}
+              )}
+            </IconButton>
+          </Box>
+        ) : (
+          <IconButton onClick={() => setIsEditMode(true)}>
+            <img 
+              src={require('../icons/edit.png')} 
+              alt="Редактировать" 
+              style={{ width: 24, height: 24 }}
+            />
+          </IconButton>
+        )}
       </Paper>
 
       {error && (
@@ -1096,10 +1138,10 @@ const StudentDetailPage: React.FC = () => {
               
               <Box className={styles.contactRow}>
                 <img 
-                       src={require('../icons/call.png')} 
-                       alt="Профиль" 
-                       style={{ width: 22, height: 22 }}
-                     />
+                  src={require('../icons/call.png')} 
+                  alt="Телефон" 
+                  style={{ width: 22, height: 22 }}
+                />
                 {isEditMode ? (
                   <TextField
                     label="Телефон"
@@ -1122,10 +1164,10 @@ const StudentDetailPage: React.FC = () => {
               
               <Box className={styles.contactRow}>
                 <img 
-                       src={require('../icons/profile3.png')} 
-                       alt="Профиль" 
-                       style={{ width: 22, height: 22 }}
-                     />
+                  src={require('../icons/profile3.png')} 
+                  alt="Приоритетный контакт" 
+                  style={{ width: 22, height: 22 }}
+                />
                 {isEditMode ? (
                   <TextField
                     select
@@ -1317,20 +1359,20 @@ const StudentDetailPage: React.FC = () => {
               ) : (
                 <Box className={styles.statusGrid}>
                   <SquareChip
-                    label={getDocumentsStatusLabel(student.documents_status)}
-                    color={getDocumentsStatusColor(student.documents_status)}
+                    label={getDocumentsStatusLabel(student.documents_status ?? undefined)}
+                    color={getDocumentsStatusColor(student.documents_status ?? undefined)}
                   />
                   <SquareChip
-                    label={getMeetingStatusLabel(student.meeting_status)}
-                    color={getMeetingStatusColor(student.meeting_status)}
+                    label={getMeetingStatusLabel(student.meeting_status ?? undefined)}
+                    color={getMeetingStatusColor(student.meeting_status ?? undefined)}
                   />
                   <SquareChip
-                    label={getCallStatusLabel(student.call_status)}
-                    color={getCallStatusColor(student.call_status)}
+                    label={getCallStatusLabel(student.call_status ?? undefined)}
+                    color={getCallStatusColor(student.call_status ?? undefined)}
                   />
                   <SquareChip
-                    label={getDecisionStatusLabel(student.decision_status)}
-                    color={getDecisionStatusColor(student.decision_status)}
+                    label={getDecisionStatusLabel(student.decision_status ?? undefined)}
+                    color={getDecisionStatusColor(student.decision_status ?? undefined)}
                   />
                   <SquareChip
                     label={getStatusText(student.status)}
@@ -1349,6 +1391,7 @@ const StudentDetailPage: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+        
         <Grid item xs={12}>
           {renderApplications()}
         </Grid>

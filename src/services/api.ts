@@ -1,6 +1,15 @@
 // src/services/api.ts
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
-import { LoginCredentials, AuthResponse, Student, User, Communication, StudentApplication, CompetitiveInfo } from '../types';
+import { 
+  LoginCredentials, 
+  AuthResponse, 
+  Student, 
+  User, 
+  Communication, 
+  StudentApplication, 
+  CompetitiveInfo, 
+  GroupStatistics 
+} from '../types';
 
 const API_BASE_URL = 'http://158.160.67.3:8000';
 
@@ -148,7 +157,6 @@ class ApiService {
     return response.data;
   }
 
-  // ДОБАВЬТЕ ЭТОТ МЕТОД!!!
   async getCompetitiveInfoForSpeciality(studentId: number, specialityId: number): Promise<CompetitiveInfo> {
     const response = await this.api.get(`/api/students/${studentId}/competitive-info/${specialityId}`);
     return response.data;
@@ -156,6 +164,13 @@ class ApiService {
 
   async getStudentCompetitiveInfo(studentId: number): Promise<CompetitiveInfo> {
     const response = await this.api.get(`/api/students/${studentId}/competitive-info`);
+    return response.data;
+  }
+
+  // ========== СТАТИСТИКА ПО ГРУППАМ ==========
+
+  async getGroupStatistics(): Promise<GroupStatistics[]> {
+    const response = await this.api.get('/api/students/statistics/groups');
     return response.data;
   }
 
