@@ -1171,7 +1171,7 @@ const StudentsListPage: React.FC = () => {
               <TableCell className={styles.scoreCell}>Баллы</TableCell>
               <TableCell className={styles.studentNameCell}>ФИО</TableCell>
               <TableCell className={styles.statusCell}>Статусы</TableCell>
-              <TableCell className={styles.profileCell}>Профиль</TableCell>
+              <TableCell className={styles.profileCell}>Факультет</TableCell>
               <TableCell className={styles.priorContactCell}>Приоритетный контакт</TableCell>
               <TableCell className={styles.activeContactCell} align="center">Активный контакт</TableCell>
               <TableCell className={styles.actionsCell} align="center">Действия</TableCell>
