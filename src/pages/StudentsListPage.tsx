@@ -36,15 +36,17 @@ import {
   InputLabel,
   Select,
   MenuItem as MuiMenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Search as SearchIcon,
-  Refresh as RefreshIcon,
   Logout as LogoutIcon,
   Add as AddIcon,
   Phone as PhoneIcon,
   Person as PersonIcon,
-  AccountCircle as AccountCircleIcon,
   Telegram as TelegramIcon,
   Link as LinkIcon,
   Sms as SmsIcon,
@@ -54,7 +56,6 @@ import {
   FilterList as FilterIcon,
   Clear as ClearIcon,
   Close as CloseIcon,
-  CloudSync as CloudSyncIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -85,9 +86,9 @@ const SquareChip: React.FC<{
   size?: 'small' | 'medium';
   sx?: any;
   variant?: 'outlined' | 'filled';
-  onClick?: () => void;
-  onDelete?: () => void;
-  icon?: React.ReactNode;
+  onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onDelete?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  icon?: React.ReactElement;
   color?: 'success' | 'error' | 'info' | 'warning' | 'default';
 }> = ({ label, size = 'small', sx, variant = 'outlined', onClick, onDelete, icon, color }) => {
   return (
@@ -127,6 +128,15 @@ const StudentsListPage: React.FC = () => {
   const [loadingActiveContact, setLoadingActiveContact] = useState<number | null>(null);
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning' });
+
+  // Состояния для диалога добавления студента
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newStudent, setNewStudent] = useState({
+    full_name: '',
+    phone: '',
+    russian_student_id: '',
+  });
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
 
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [tempFilters, setTempFilters] = useState<Filters>({
@@ -309,21 +319,6 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  // Получение иконки активного контакта (всегда звезда)
-  const getActiveContactIcon = () => {
-    return <StarIcon sx={{ fontSize: 20, color: '#FFD700' }} />;
-  };
-
-  // Получение названия активного контакта
-  const getActiveContactLabel = () => {
-    const contactType = activeContact?.contact_type?.toLowerCase();
-    switch (contactType) {
-      case 'telegram': return 'Telegram';
-      case 'url': return 'Ссылка';
-      default: return 'Активный контакт';
-    }
-  };
-
   useEffect(() => {
     loadStudents();
     loadFiltersData();
@@ -437,11 +432,11 @@ const StudentsListPage: React.FC = () => {
     }
 
     if (filters.department_id !== '') {
-      result = result.filter(student => student.department_id === filters.department_id);
+      result = result.filter(student => student.department_id === Number(filters.department_id));
     }
 
     if (filters.speciality_id !== '') {
-      result = result.filter(student => student.speciality_id === filters.speciality_id);
+      result = result.filter(student => student.speciality_id === Number(filters.speciality_id));
     }
 
     if (filters.study_form.length > 0) {
@@ -551,11 +546,11 @@ const StudentsListPage: React.FC = () => {
       const newFilters = { ...prev };
       if (value) {
         const currentArray = prev[key] as string[];
-        newFilters[key] = currentArray.filter(v => v !== value) as any;
+        (newFilters[key] as any) = currentArray.filter(v => v !== value);
       } else if (key === 'department_id' || key === 'speciality_id') {
-        newFilters[key] = '';
+        (newFilters[key] as any) = '';
       } else {
-        newFilters[key] = null;
+        (newFilters[key] as any) = null;
       }
       return newFilters;
     });
@@ -665,7 +660,7 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  const handlePriorContactAction = (student: Student, event: React.MouseEvent) => {
+  const handlePriorContactAction = (student: Student, event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
     const priorContact = student.prior_contact?.toLowerCase();
     if (priorContact === 'телеграмм' || priorContact === 'telegram') {
@@ -714,7 +709,7 @@ const StudentsListPage: React.FC = () => {
     handleMenuClose();
   };
 
-  const getPriorContactIcon = (priorContact: string | null | undefined) => {
+  const getPriorContactIcon = (priorContact: string | null | undefined): React.ReactElement | null => {
     const contact = priorContact?.toLowerCase();
     if (contact === 'телеграмм' || contact === 'telegram') return <TelegramIcon fontSize="small" />;
     if (contact === 'ссылка' || contact === 'url') return <LinkIcon fontSize="small" />;
@@ -739,6 +734,31 @@ const StudentsListPage: React.FC = () => {
     if (contact === 'звонок' || contact === 'phone' || contact === 'call') return '#4CAF50';
     if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return '#2196F3';
     return '#9E9E9E';
+  };
+
+  const handleAddStudent = async () => {
+    if (!newStudent.full_name || !newStudent.phone || !newStudent.russian_student_id) {
+      setSnackbar({ open: true, message: 'Заполните все поля', severity: 'error' });
+      return;
+    }
+    
+    setIsAddingStudent(true);
+    try {
+      const studentData = {
+        full_name: newStudent.full_name,
+        phone: newStudent.phone,
+        russian_student_id: parseInt(newStudent.russian_student_id),
+      };
+      await apiService.createStudent(studentData);
+      setSnackbar({ open: true, message: 'Студент добавлен', severity: 'success' });
+      setAddDialogOpen(false);
+      setNewStudent({ full_name: '', phone: '', russian_student_id: '' });
+      loadStudents();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка добавления: ' + (err.response?.data?.detail || err.message), severity: 'error' });
+    } finally {
+      setIsAddingStudent(false);
+    }
   };
 
   const renderFiltersPopover = () => (
@@ -1022,17 +1042,17 @@ const StudentsListPage: React.FC = () => {
           </Typography>
         </Box>
         <Box className={styles.headerActions}>
-            {activeContact && (
-              <Tooltip title={`Активный контакт: ${getActiveContactLabel()}`}>
-                <IconButton onClick={handleActiveContactClick} title="Активный контакт">
-                  <img 
-                    src={require('../icons/link.png')} 
-                    alt="Активный контакт" 
-                    style={{ width: 24, height: 24 }}
-                  />
-                </IconButton>
-              </Tooltip>
-            )}
+          {activeContact && (
+            <Tooltip title={`Активный контакт: ${activeContact.contact_type === 'telegram' ? 'Telegram' : 'Ссылка'}`}>
+              <IconButton onClick={handleActiveContactClick} title="Активный контакт">
+                <img 
+                  src={require('../icons/link.png')} 
+                  alt="Активный контакт" 
+                  style={{ width: 24, height: 24 }}
+                />
+              </IconButton>
+            </Tooltip>
+          )}
           
           <IconButton onClick={runParser} title="Запустить парсер" disabled={isParserRunning} color="secondary">
             {isParserRunning ? (
@@ -1048,7 +1068,7 @@ const StudentsListPage: React.FC = () => {
               alt="Профиль" 
               style={{ width: 28, height: 28 }}
             />
-        </IconButton>
+          </IconButton>
           
           <IconButton onClick={handleLogout} title="Выйти" color="error">
             <LogoutIcon />
@@ -1081,7 +1101,12 @@ const StudentsListPage: React.FC = () => {
             Фильтры
           </Button>
         </Badge>
-        <Button variant="contained" startIcon={<AddIcon />} className={styles.addButton}>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />} 
+          className={styles.addButton}
+          onClick={() => setAddDialogOpen(true)}
+        >
           Добавить
         </Button>
       </Box>
@@ -1177,19 +1202,19 @@ const StudentsListPage: React.FC = () => {
                         label={getDocumentsStatusLabel(student.documents_status)} 
                         size="small" 
                         color={getDocumentsStatusColor(student.documents_status)}
-                              sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
+                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
                       />
                       <SquareChip 
                         label={getMeetingStatusLabel(student.meeting_status)} 
                         size="small" 
                         color={getMeetingStatusColor(student.meeting_status)}
-                              sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
+                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
                       />
                       <SquareChip 
                         label={getCallStatusLabel(student.call_status)} 
                         size="small" 
                         color={getCallStatusColor(student.call_status)}
-                              sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
+                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
                       />
                       <SquareChip 
                         label={getDecisionStatusLabel(student.decision_status)} 
@@ -1289,6 +1314,42 @@ const StudentsListPage: React.FC = () => {
           </MenuItem>
         )}
       </Menu>
+
+      {/* Диалог добавления студента */}
+      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Добавить студента</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              label="ФИО *"
+              fullWidth
+              value={newStudent.full_name}
+              onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })}
+            />
+            <TextField
+              label="Телефон *"
+              fullWidth
+              value={newStudent.phone}
+              onChange={(e) => setNewStudent({ ...newStudent, phone: e.target.value })}
+              placeholder="+79991234567"
+            />
+            <TextField
+              label="Российский ID *"
+              fullWidth
+              type="number"
+              value={newStudent.russian_student_id}
+              onChange={(e) => setNewStudent({ ...newStudent, russian_student_id: e.target.value })}
+              placeholder="1234567890"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddDialogOpen(false)}>Отмена</Button>
+          <Button onClick={handleAddStudent} variant="contained" disabled={isAddingStudent}>
+            {isAddingStudent ? <CircularProgress size={24} /> : 'Добавить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
