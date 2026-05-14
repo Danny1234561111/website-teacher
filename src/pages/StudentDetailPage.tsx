@@ -530,6 +530,7 @@
       
       if (isPhoneNumber) {
         const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
+        // Только tg:// протокол, без window.open
         window.location.href = `tg://resolve?phone=${phoneNumber}`;
       } else {
         window.location.href = `tg://resolve?domain=${cleanContact}`;
@@ -1031,7 +1032,11 @@
 
         <Paper className={styles.paperHeader}>
           <IconButton onClick={() => navigate('/students')}>
-            <ArrowBackIcon />
+            <img 
+                  src={require('../icons/home.png')} 
+                  alt="Студенты" 
+                  style={{ width: 28, height: 28 }}
+                />
           </IconButton>
           
           <Box sx={{ flex: 1 }}>
@@ -1089,7 +1094,7 @@
             <Box sx={{ display: 'flex', gap: 1 }}>
               <IconButton onClick={() => navigate('/students')} title="Список студентов" color="primary">
                 <img 
-                  src={require('../icons/home.png')} 
+                  src={require('../icons/cancel.png')} 
                   alt="Студенты" 
                   style={{ width: 28, height: 28 }}
                 />

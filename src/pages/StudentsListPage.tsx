@@ -428,7 +428,7 @@ const StudentsListPage: React.FC = () => {
     }
 
     if (filters.contact_status.length > 0) {
-      result = result.filter(student => student.contact_status && filters.contact_status.includes(student.contact_status));
+      result = result.filter(student => student.contact_status && filters.contact_status.includes(student.contact_status.toLowerCase()));
     }
 
     if (filters.department_id !== '') {
@@ -452,19 +452,19 @@ const StudentsListPage: React.FC = () => {
     }
 
     if (filters.meeting_status !== null) {
-      result = result.filter(student => student.meeting_status === filters.meeting_status);
+      result = result.filter(student => student.meeting_status?.toLowerCase() === filters.meeting_status);
     }
 
     if (filters.call_status !== null) {
-      result = result.filter(student => student.call_status === filters.call_status);
+      result = result.filter(student => student.call_status?.toLowerCase() === filters.call_status);
     }
 
     if (filters.decision_status !== null) {
-      result = result.filter(student => student.decision_status === filters.decision_status);
+      result = result.filter(student => student.decision_status?.toLowerCase() === filters.decision_status);
     }
 
     if (filters.documents_status !== null) {
-      result = result.filter(student => student.documents_status === filters.documents_status);
+      result = result.filter(student => student.documents_status?.toLowerCase() === filters.documents_status);
     }
 
     result.sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
@@ -567,21 +567,17 @@ const StudentsListPage: React.FC = () => {
   };
 
   const openTelegramDesktop = (contact: string) => {
-    let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
-    const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
-    if (isPhoneNumber) {
-      const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
-      window.location.href = `tg://resolve?phone=${phoneNumber}`;
-      setTimeout(() => {
-        window.open(`https://t.me/${phoneNumber}`, '_blank');
-      }, 2000);
-    } else {
-      window.location.href = `tg://resolve?domain=${cleanContact}`;
-      setTimeout(() => {
-        window.open(`https://t.me/${cleanContact}`, '_blank');
-      }, 2000);
-    }
-  };
+  let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
+  const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
+  
+  if (isPhoneNumber) {
+    const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
+    // Только tg:// протокол, без setTimeout и window.open
+    window.location.href = `tg://resolve?phone=${phoneNumber}`;
+  } else {
+    window.location.href = `tg://resolve?domain=${cleanContact}`;
+  }
+};
 
   const openLink = (url: string) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
