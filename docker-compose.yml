@@ -1,0 +1,11 @@
+﻿version: '3.8'
+
+services:
+  frontend:
+    build: .
+    container_name: university_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://158.160.67.3:8000
+    restart: unless-stopped

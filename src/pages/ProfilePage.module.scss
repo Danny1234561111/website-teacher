@@ -1,10 +1,11 @@
-
 $accents-blue: rgba(0, 136, 255, 1);
 $schemes-on-surface-variant: rgba(73, 69, 79, 1);
 $border-color: rgba(197, 198, 208, 1);
 $black-border: rgba(0, 0, 0, 1);
 $white: #ffffff;
 $error-red: rgba(255, 56, 60, 1);
+$success-green: rgba(52, 199, 89, 1);
+$neutral-gray: rgba(160, 160, 160, 1);
 
 .container {
   min-height: 100vh;
@@ -23,7 +24,6 @@ $error-red: rgba(255, 56, 60, 1);
   min-height: 100vh;
 }
 
-// Header styles 
 .header {
   padding: 16px 24px;
   margin-bottom: 24px;
@@ -57,20 +57,17 @@ $error-red: rgba(255, 56, 60, 1);
   gap: 8px;
 }
 
-// Error alert
 .errorAlert {
   margin-bottom: 16px;
   border-radius: 28px;
 }
 
-// Profile container
 .profileContainer {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-// Avatar section
 .avatarSection {
   text-align: center;
   padding: 32px;
@@ -112,7 +109,6 @@ $error-red: rgba(255, 56, 60, 1);
   font-weight: 500;
 }
 
-// Info card
 .infoCard {
   border-radius: 28px;
   box-shadow: none;
@@ -161,7 +157,105 @@ $error-red: rgba(255, 56, 60, 1);
   color: #000000;
 }
 
-// Responsive styles
+// Настройки коммуникации - единый стиль
+.settingsCard {
+  border-radius: 28px;
+  box-shadow: none;
+  border: 0.6px solid $black-border;
+  background-color: $white;
+  overflow: hidden;
+}
+
+.settingsDescription {
+  font-size: 13px;
+  color: $schemes-on-surface-variant;
+  margin-bottom: 20px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid $border-color;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.settingRowReadonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid $border-color;
+  background-color: rgba(0, 0, 0, 0.02);
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.settingInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settingLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #000000;
+}
+
+.settingHint {
+  font-size: 11px;
+  color: $schemes-on-surface-variant;
+  margin-top: 2px;
+}
+
+.settingSelect {
+  min-width: 160px;
+  
+  .MuiOutlinedInput-root {
+    border-radius: 12px;
+  }
+}
+
+.readonlyChip {
+  background-color: rgba(33, 150, 243, 0.1);
+  color: #1976D2;
+  border: 1px solid #1976D2;
+  border-radius: 16px;
+  font-size: 12px;
+}
+
+.settingsActions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.saveButton {
+  background-color: $accents-blue;
+  color: $white;
+  padding: 8px 24px;
+  border-radius: 24px;
+  text-transform: none;
+  font-size: 14px;
+  font-weight: 500;
+  
+  &:hover {
+    background-color: darken($accents-blue, 10%);
+  }
+}
+
+.successAlert {
+  margin-top: 16px;
+  border-radius: 12px;
+}
+
 @media (max-width: 768px) {
   .innerContainer {
     padding-top: 16px;
@@ -200,9 +294,28 @@ $error-red: rgba(255, 56, 60, 1);
     gap: 12px;
     padding: 8px 0;
   }
+  
+  .settingRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .settingRowReadonly {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .settingSelect {
+    width: 100%;
+  }
+  
+  .settingsActions {
+    justify-content: center;
+  }
 }
 
-// Animations
 @keyframes fadeIn {
   from {
     opacity: 0;

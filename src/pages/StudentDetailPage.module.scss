@@ -518,3 +518,21 @@ background-color: $gray-bg;
   line-height: 32px;
   color: rgba(0, 136, 255, 1);
 }
+.starInactive {
+  color: #000000;
+  fill: none;
+}
+
+// Звезда активная (желтая)
+.starActive {
+  color: #FFD700;
+  fill: #FFD700;
+}
+
+.activeContactBtn {
+  transition: all 0.2s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+  }
+}

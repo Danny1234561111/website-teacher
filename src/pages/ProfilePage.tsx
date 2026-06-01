@@ -15,6 +15,12 @@ import {
   Chip,
   IconButton,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Grid,
+  Snackbar,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -22,6 +28,13 @@ import {
   Star as StarIcon,
   CloudSync as CloudSyncIcon,
   AccountCircle as AccountCircleIcon,
+  Settings as SettingsIcon,
+  Telegram as TelegramIcon,
+  Link as LinkIcon,
+  Language as UrlIcon,
+  Save as SaveIcon,
+  Phone as PhoneIcon,
+  Sms as SmsIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,8 +50,16 @@ const ProfilePage: React.FC = () => {
   const [error, setError] = useState('');
   const [isParserRunning, setIsParserRunning] = useState(false);
   const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
+  
+  const [settings, setSettings] = useState({
+    telegram_open_on: 'pc',
+    vk_open_on: 'pc',
+    url_open_on: 'pc',
+  });
+  const [isSettingsLoading, setIsSettingsLoading] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  // Загрузка активного контакта
   const loadActiveContact = async () => {
     try {
       const contact = await apiService.getActiveContact();
@@ -53,7 +74,37 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  // Обработка клика по активному контакту
+  const loadCommunicationSettings = async () => {
+    try {
+      const response = await apiService.getCommunicationSettings();
+      setSettings({
+        telegram_open_on: response.telegram_open_on || 'pc',
+        vk_open_on: response.vk_open_on || 'pc',
+        url_open_on: response.url_open_on || 'pc',
+      });
+    } catch (err) {
+      console.error('Ошибка загрузки настроек:', err);
+    }
+  };
+
+  const saveCommunicationSettings = async () => {
+    setIsSettingsLoading(true);
+    try {
+      await apiService.updateCommunicationSettings({
+        telegram_open_on: settings.telegram_open_on,
+        vk_open_on: settings.vk_open_on,
+        url_open_on: settings.url_open_on,
+      });
+      setSettingsSaved(true);
+      setSnackbar({ open: true, message: 'Настройки сохранены', severity: 'success' });
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка сохранения настроек', severity: 'error' });
+    } finally {
+      setIsSettingsLoading(false);
+    }
+  };
+
   const handleActiveContactClick = () => {
     if (!activeContact) return;
     
@@ -73,14 +124,8 @@ const ProfilePage: React.FC = () => {
     if (isPhoneNumber) {
       const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
       window.location.href = `tg://resolve?phone=${phoneNumber}`;
-      setTimeout(() => {
-        window.open(`https://t.me/${phoneNumber}`, '_blank');
-      }, 2000);
     } else {
       window.location.href = `tg://resolve?domain=${cleanContact}`;
-      setTimeout(() => {
-        window.open(`https://t.me/${cleanContact}`, '_blank');
-      }, 2000);
     }
   };
 
@@ -103,9 +148,9 @@ const ProfilePage: React.FC = () => {
         },
       });
       const data = await response.json();
-      // Можно добавить уведомление
+      setSnackbar({ open: true, message: 'Парсер запущен', severity: 'success' });
     } catch (err: any) {
-      console.error('Ошибка запуска парсера:', err);
+      setSnackbar({ open: true, message: 'Ошибка запуска парсера', severity: 'error' });
     } finally {
       setIsParserRunning(false);
     }
@@ -119,6 +164,7 @@ const ProfilePage: React.FC = () => {
   useEffect(() => {
     loadProfile();
     loadActiveContact();
+    loadCommunicationSettings();
   }, []);
 
   const loadProfile = async () => {
@@ -150,15 +196,26 @@ const ProfilePage: React.FC = () => {
 
   return (
     <Container maxWidth="xl" className={styles.innerContainer}>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+
       <Paper className={styles.header}>
         <IconButton onClick={() => navigate('/students')} title="Список студентов" color="primary">
-            <img 
-              src={require('../icons/home.png')} 
-              alt="Студенты" 
-              style={{ width: 28, height: 28 }}
-            />
-          </IconButton>
-        <Box sx={{ flex: 1 , ml: 2 }}>
+          <img 
+            src={require('../icons/home.png')} 
+            alt="Студенты" 
+            style={{ width: 28, height: 28 }}
+          />
+        </IconButton>
+        <Box sx={{ flex: 1, ml: 2 }}>
           <Typography variant="h5" component="h1" className={styles.headerTitle}>
             Мой профиль
           </Typography>
@@ -268,6 +325,128 @@ const ProfilePage: React.FC = () => {
                 <Typography className={styles.infoValue}>Активен</Typography>
               </Box>
             </Box>
+          </CardContent>
+        </Card>
+
+        {/* Карточка настроек коммуникации - единый стиль */}
+        <Card className={styles.settingsCard}>
+          <CardContent className={styles.cardContent}>
+            <Typography variant="h6" className={styles.cardTitle}>
+              <SettingsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+              Настройки коммуникации
+            </Typography>
+            <Divider className={styles.divider} />
+
+            {/* Telegram */}
+            <Box className={styles.settingRow}>
+              <Box className={styles.settingInfo}>
+                <TelegramIcon sx={{ color: '#26A5E4', fontSize: 22 }} />
+                <Box>
+                  <Typography className={styles.settingLabel}>Telegram</Typography>
+                  <Typography className={styles.settingHint}>
+                    {settings.telegram_open_on === 'pc' 
+                      ? 'Открывать в веб-версии (telegram desktop)' 
+                      : 'Открывать в мобильном приложении'}
+                  </Typography>
+                </Box>
+              </Box>
+              <FormControl size="small" className={styles.settingSelect}>
+                <Select
+                  value={settings.telegram_open_on}
+                  onChange={(e) => setSettings({ ...settings, telegram_open_on: e.target.value })}
+                  sx={{ width: 180 }}
+                >
+                  <MenuItem value="pc">На компьютере</MenuItem>
+                  <MenuItem value="mobile">На телефоне</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* VK */}
+            <Box className={styles.settingRow}>
+              <Box className={styles.settingInfo}>
+                <img 
+                  src={require('../icons/vk.png')} 
+                  alt="VK" 
+                  style={{ width: 22, height: 22 }}
+                />
+                <Box>
+                  <Typography className={styles.settingLabel}>VK</Typography>
+                  <Typography className={styles.settingHint}>
+                    {settings.vk_open_on === 'pc' 
+                      ? 'Открывать в браузере (vk.com)' 
+                      : 'Открывать в мобильном приложении'}
+                  </Typography>
+                </Box>
+              </Box>
+              <FormControl size="small" className={styles.settingSelect}>
+                <Select
+                  value={settings.vk_open_on}
+                  onChange={(e) => setSettings({ ...settings, vk_open_on: e.target.value })}
+                  sx={{ width: 180 }}
+                >
+                  <MenuItem value="pc">На компьютере</MenuItem>
+                  <MenuItem value="mobile">На телефоне</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Ссылки/URL */}
+            <Box className={styles.settingRow}>
+              <Box className={styles.settingInfo}>
+                <UrlIcon sx={{ color: '#9C27B0', fontSize: 22 }} />
+                <Box>
+                  <Typography className={styles.settingLabel}>Ссылки/URL</Typography>
+                  <Typography className={styles.settingHint}>
+                    {settings.url_open_on === 'pc' 
+                      ? 'Открывать в браузере на компьютере' 
+                      : 'Открывать в браузере на телефоне'}
+                  </Typography>
+                </Box>
+              </Box>
+              <FormControl size="small" className={styles.settingSelect}>
+                <Select
+                  value={settings.url_open_on}
+                  onChange={(e) => setSettings({ ...settings, url_open_on: e.target.value })}
+                  sx={{ width: 180 }}
+                >
+                  <MenuItem value="pc">На компьютере</MenuItem>
+                  <MenuItem value="mobile">На телефоне</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Звонки и SMS - readonly */}
+            <Box className={styles.settingRowReadonly}>
+              <Box className={styles.settingInfo}>
+                <PhoneIcon sx={{ color: '#4CAF50', fontSize: 22 }} />
+                <Box>
+                  <Typography className={styles.settingLabel}>Звонки и SMS</Typography>
+                  <Typography className={styles.settingHint}>
+                    Всегда инициируются на мобильном устройстве
+                  </Typography>
+                </Box>
+              </Box>
+              <Chip label="Только на телефоне" size="small" className={styles.readonlyChip} />
+            </Box>
+
+            <Box className={styles.settingsActions}>
+              <Button
+                variant="contained"
+                startIcon={isSettingsLoading ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />}
+                onClick={saveCommunicationSettings}
+                disabled={isSettingsLoading}
+                className={styles.saveButton}
+              >
+                Сохранить настройки
+              </Button>
+            </Box>
+
+            {settingsSaved && (
+              <Alert severity="success" className={styles.successAlert} icon={<SaveIcon />}>
+                Настройки успешно сохранены!
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </Box>

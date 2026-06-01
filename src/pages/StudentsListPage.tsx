@@ -1,5 +1,4 @@
-// src/pages/StudentsListPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import {
   Container,
   Box,
@@ -40,6 +39,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Tab,
+  Tabs,
+  RadioGroup,
+  Radio,
+  List,
+  ListItem,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -56,6 +61,8 @@ import {
   FilterList as FilterIcon,
   Clear as ClearIcon,
   Close as CloseIcon,
+  UploadFile as UploadFileIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -78,7 +85,59 @@ interface Filters {
   documents_status: string | null;
 }
 
+// Ключи для localStorage
 const STUDENT_FILTERS_KEY = 'student_filters';
+const STUDENT_FILTERS_TIMESTAMP_KEY = 'student_filters_timestamp';
+const STUDENT_PAGINATION_KEY = 'student_pagination';
+const STUDENT_PAGINATION_TIMESTAMP_KEY = 'student_pagination_timestamp';
+const STUDENT_SEARCH_KEY = 'student_search';
+const STUDENT_SEARCH_TIMESTAMP_KEY = 'student_search_timestamp';
+
+// Время жизни кэша в минутах (можно менять здесь)
+const CACHE_TTL_MINUTES = 60;
+
+// Функции для работы с TTL
+const isCacheExpired = (timestamp: number | null): boolean => {
+  if (!timestamp) return true;
+  return Date.now() - timestamp > CACHE_TTL_MINUTES * 60 * 1000;
+};
+
+const setWithExpiry = (key: string, value: any, timestampKey: string) => {
+  localStorage.setItem(key, JSON.stringify(value));
+  localStorage.setItem(timestampKey, Date.now().toString());
+};
+
+const getWithExpiry = (key: string, timestampKey: string): any | null => {
+  const timestamp = localStorage.getItem(timestampKey);
+  if (isCacheExpired(timestamp ? parseInt(timestamp) : null)) {
+    localStorage.removeItem(key);
+    localStorage.removeItem(timestampKey);
+    return null;
+  }
+  const data = localStorage.getItem(key);
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+};
+
+// Функция нормализации ФИО
+const normalizeFullName = (name: string): string => {
+  if (!name) return '';
+  
+  let cleaned = name.replace(/[*]/g, '').trim();
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  const words = cleaned.split(' ');
+  const normalizedWords = words.map(word => {
+    if (word.length === 0) return word;
+    return word[0].toUpperCase() + word.slice(1).toLowerCase();
+  });
+  
+  return normalizedWords.join(' ');
+};
 
 // Кастомный компонент для квадратного чипа
 const SquareChip: React.FC<{
@@ -115,9 +174,26 @@ const StudentsListPage: React.FC = () => {
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const getInitialSearch = () => {
+    const savedSearch = getWithExpiry(STUDENT_SEARCH_KEY, STUDENT_SEARCH_TIMESTAMP_KEY);
+    return savedSearch !== null ? savedSearch : '';
+  };
+  
+  const getInitialPagination = () => {
+    const savedPagination = getWithExpiry(STUDENT_PAGINATION_KEY, STUDENT_PAGINATION_TIMESTAMP_KEY);
+    if (savedPagination) {
+      return {
+        page: savedPagination.page ?? 0,
+        rowsPerPage: savedPagination.rowsPerPage ?? 10
+      };
+    }
+    return { page: 0, rowsPerPage: 10 };
+  };
+  
+  const initialPagination = getInitialPagination();
+  const [searchQuery, setSearchQuery] = useState(getInitialSearch);
+  const [page, setPage] = useState(initialPagination.page);
+  const [rowsPerPage, setRowsPerPage] = useState(initialPagination.rowsPerPage);
   const [total, setTotal] = useState(0);
   const [isParserRunning, setIsParserRunning] = useState(false);
   const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
@@ -128,16 +204,39 @@ const StudentsListPage: React.FC = () => {
   const [loadingActiveContact, setLoadingActiveContact] = useState<number | null>(null);
   
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning' });
-
-  // Состояния для диалога добавления студента
+  
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addDialogTab, setAddDialogTab] = useState(0);
   const [newStudent, setNewStudent] = useState({
     full_name: '',
     phone: '',
     russian_student_id: '',
   });
   const [isAddingStudent, setIsAddingStudent] = useState(false);
-
+  
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [excelFile, setExcelFile] = useState<File | null>(null);
+  const [isImportingExcel, setIsImportingExcel] = useState(false);
+  const [excelImportResult, setExcelImportResult] = useState<{
+    success: boolean;
+    total_rows: number;
+    created_students: number;
+    updated_students: number;
+    created_applications: number;
+    errors: any[];
+    warnings: any[];
+    message: string;
+    duplicates_found?: any[];
+  } | null>(null);
+  
+  const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
+  const [duplicateStrategy, setDuplicateStrategy] = useState<'skip' | 'replace_all' | 'replace_selected'>('skip');
+  const [replaceIds, setReplaceIds] = useState<Set<number>>(new Set());
+  const [showDuplicatesDialog, setShowDuplicatesDialog] = useState(false);
+  const [isRetryingImport, setIsRetryingImport] = useState(false);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
   const [tempFilters, setTempFilters] = useState<Filters>({
     status: [],
@@ -155,21 +254,35 @@ const StudentsListPage: React.FC = () => {
   });
   const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
   const [specialities, setSpecialities] = useState<{ id: number; name: string }[]>([]);
+  
+  // Настройки коммуникации
+  const [communicationSettings, setCommunicationSettings] = useState<{
+    telegram_open_on: string;
+    vk_open_on: string;
+    url_open_on: string;
+  }>({
+    telegram_open_on: 'pc',
+    vk_open_on: 'pc',
+    url_open_on: 'pc',
+  });
 
-  // Опции для новых статусов
   const meetingStatusOptions = [
     { value: 'not_met', label: 'Не был на сборе', color: 'error' as const },
     { value: 'met', label: 'Был на сборе', color: 'success' as const },
+    { value: 'unknown', label: 'Не указано', color: 'default' as const },
   ];
 
   const callStatusOptions = [
     { value: 'not_reached', label: 'Не дозвонились', color: 'error' as const },
     { value: 'reached', label: 'Дозвонились', color: 'success' as const },
+    { value: 'unknown', label: 'Не указано', color: 'default' as const },
   ];
 
   const decisionStatusOptions = [
     { value: 'thinking', label: 'Думает', color: 'warning' as const },
+    { value: 'denied', label: 'Отказался', color: 'error' as const },
     { value: 'decided', label: 'Решил', color: 'success' as const },
+    { value: 'unknown', label: 'Не указано', color: 'default' as const },
   ];
 
   const documentsStatusOptions = [
@@ -177,30 +290,35 @@ const StudentsListPage: React.FC = () => {
     { value: 'original_submitted', label: 'Подан оригинал', color: 'success' as const },
     { value: 'waiting_original', label: 'Ждем оригинал', color: 'warning' as const },
     { value: 'enrolled', label: 'Зачислен', color: 'info' as const },
+    { value: 'unknown', label: 'Не указано', color: 'default' as const },
   ];
 
+  const getPriorContactType = (priorContact: string | null | undefined): string => {
+    const contact = priorContact?.toLowerCase();
+    if (contact === 'телеграмм' || contact === 'telegram') return 'Telegram';
+    if (contact === 'ссылка' || contact === 'url') return 'Url';
+    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return 'Call';
+    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return 'Sms';
+    return 'Default';
+  };
+
   const getInitialFilters = (): Filters => {
-    const saved = localStorage.getItem(STUDENT_FILTERS_KEY);
+    const saved = getWithExpiry(STUDENT_FILTERS_KEY, STUDENT_FILTERS_TIMESTAMP_KEY);
     if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          status: parsed.status || [],
-          application_status: parsed.application_status || [],
-          contact_status: parsed.contact_status || [],
-          department_id: parsed.department_id || '',
-          speciality_id: parsed.speciality_id || '',
-          study_form: parsed.study_form || [],
-          study_basis: parsed.study_basis || [],
-          consent_status: parsed.consent_status !== undefined ? parsed.consent_status : null,
-          meeting_status: parsed.meeting_status !== undefined ? parsed.meeting_status : null,
-          call_status: parsed.call_status !== undefined ? parsed.call_status : null,
-          decision_status: parsed.decision_status !== undefined ? parsed.decision_status : null,
-          documents_status: parsed.documents_status !== undefined ? parsed.documents_status : null,
-        };
-      } catch (e) {
-        console.error('Ошибка загрузки фильтров:', e);
-      }
+      return {
+        status: saved.status || [],
+        application_status: saved.application_status || [],
+        contact_status: saved.contact_status || [],
+        department_id: saved.department_id || '',
+        speciality_id: saved.speciality_id || '',
+        study_form: saved.study_form || [],
+        study_basis: saved.study_basis || [],
+        consent_status: saved.consent_status !== undefined ? saved.consent_status : null,
+        meeting_status: saved.meeting_status !== undefined ? saved.meeting_status : null,
+        call_status: saved.call_status !== undefined ? saved.call_status : null,
+        decision_status: saved.decision_status !== undefined ? saved.decision_status : null,
+        documents_status: saved.documents_status !== undefined ? saved.documents_status : null,
+      };
     }
     return {
       status: [],
@@ -221,76 +339,97 @@ const StudentsListPage: React.FC = () => {
   const [filters, setFilters] = useState<Filters>(getInitialFilters);
 
   useEffect(() => {
-    localStorage.setItem(STUDENT_FILTERS_KEY, JSON.stringify(filters));
+    const init = async () => {
+      await loadStudents();
+    };
+    
+    init();
+    loadFiltersData();
+    loadActiveContact();
+    loadCommunicationSettings();
+  }, []);
+
+  useEffect(() => {
+    setWithExpiry(STUDENT_FILTERS_KEY, filters, STUDENT_FILTERS_TIMESTAMP_KEY);
   }, [filters]);
 
-  const getStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
-    const statusLower = status?.toLowerCase();
-    switch (statusLower) {
-      case 'active': return 'success';
-      case 'inactive': return 'error';
-      case 'enrolled': return 'info';
-      case 'pending': return 'warning';
-      case 'accepted': return 'success';
-      case 'rejected': return 'error';
-      default: return 'default';
-    }
-  };
+  useEffect(() => {
+    setWithExpiry(STUDENT_PAGINATION_KEY, { page, rowsPerPage }, STUDENT_PAGINATION_TIMESTAMP_KEY);
+  }, [page, rowsPerPage]);
 
-  const getStatusText = (status: string | null | undefined): string => {
-    switch (status?.toLowerCase()) {
-      case 'active': return 'Активный';
-      case 'inactive': return 'Неактивный';
-      case 'enrolled': return 'Зачислен';
-      case 'pending': return 'Ожидает';
-      case 'accepted': return 'Принято';
-      case 'rejected': return 'Отклонено';
-      case 'paid': return 'Оплачено';
-      default: return status || '—';
-    }
-  };
+  useEffect(() => {
+    setWithExpiry(STUDENT_SEARCH_KEY, searchQuery, STUDENT_SEARCH_TIMESTAMP_KEY);
+  }, [searchQuery]);
+
+  
+  useEffect(() => {
+    applyFilters();
+  }, [searchQuery, students, filters]);
 
   const getMeetingStatusLabel = (status: string | null | undefined): string => {
-    const opt = meetingStatusOptions.find(m => m.value === status?.toLowerCase());
-    return opt?.label || 'Не был на сборе';
-  };
-
-  const getMeetingStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
-    const opt = meetingStatusOptions.find(m => m.value === status?.toLowerCase());
-    return opt?.color || 'default';
+    if (status?.toLowerCase() === 'met') return 'Был на сборе';
+    if (status?.toLowerCase() === 'not_met') return 'Не был на сборе';
+    if (status?.toLowerCase() === 'unknown') return 'Не указано';
+    return 'Не указано';
   };
 
   const getCallStatusLabel = (status: string | null | undefined): string => {
-    const opt = callStatusOptions.find(c => c.value === status?.toLowerCase());
-    return opt?.label || 'Не дозвонились';
-  };
-
-  const getCallStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
-    const opt = callStatusOptions.find(c => c.value === status?.toLowerCase());
-    return opt?.color || 'default';
+    if (status?.toLowerCase() === 'reached') return 'Дозвонились';
+    if (status?.toLowerCase() === 'not_reached') return 'Не дозвонились';
+    if (status?.toLowerCase() === 'unknown') return 'Не указано';
+    return 'Не указано';
   };
 
   const getDecisionStatusLabel = (status: string | null | undefined): string => {
-    const opt = decisionStatusOptions.find(d => d.value === status?.toLowerCase());
-    return opt?.label || 'Думает';
-  };
-
-  const getDecisionStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
-    const opt = decisionStatusOptions.find(d => d.value === status?.toLowerCase());
-    return opt?.color || 'default';
+    if (status?.toLowerCase() === 'decided') return 'Решил';
+    if (status?.toLowerCase() === 'thinking') return 'Думает';
+    if (status?.toLowerCase() === 'denied') return 'Отказался';
+    if (status?.toLowerCase() === 'unknown') return 'Не указано';
+    return 'Не указано';
   };
 
   const getDocumentsStatusLabel = (status: string | null | undefined): string => {
-    const opt = documentsStatusOptions.find(d => d.value === status?.toLowerCase());
-    return opt?.label || 'Нет заявл.';
+    const statusLower = status?.toLowerCase();
+    if (statusLower === 'original_submitted') return 'Подан оригинал';
+    if (statusLower === 'waiting_original') return 'Ждем оригинал';
+    if (statusLower === 'enrolled') return 'Зачислен';
+    if (statusLower === 'not_submitted') return 'Нет заявл.';
+    if (statusLower === 'unknown') return 'Не указано';
+    return 'Не указано';
+  };
+
+  const getMeetingStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
+    if (status?.toLowerCase() === 'met') return 'success';
+    if (status?.toLowerCase() === 'not_met') return 'error';
+    if (status?.toLowerCase() === 'unknown') return 'default';
+    return 'default';
+  };
+
+  const getCallStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
+    if (status?.toLowerCase() === 'reached') return 'success';
+    if (status?.toLowerCase() === 'not_reached') return 'error';
+    if (status?.toLowerCase() === 'unknown') return 'default';
+    return 'default';
+  };
+
+  const getDecisionStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
+    if (status?.toLowerCase() === 'decided') return 'success';
+    if (status?.toLowerCase() === 'thinking') return 'warning';
+    if (status?.toLowerCase() === 'denied') return 'error';
+    if (status?.toLowerCase() === 'unknown') return 'default';
+    return 'default';
   };
 
   const getDocumentsStatusColor = (status: string | null | undefined): "success" | "error" | "info" | "warning" | "default" => {
-    const opt = documentsStatusOptions.find(d => d.value === status?.toLowerCase());
-    return opt?.color || 'default';
+    const statusLower = status?.toLowerCase();
+    if (statusLower === 'original_submitted') return 'success';
+    if (statusLower === 'waiting_original') return 'warning';
+    if (statusLower === 'enrolled') return 'info';
+    if (statusLower === 'not_submitted') return 'default';
+    if (statusLower === 'unknown') return 'default';
+    return 'default';
   };
 
-  // Загрузка активного контакта
   const loadActiveContact = async () => {
     try {
       const contact = await apiService.getActiveContact();
@@ -305,7 +444,15 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  // Обработка клика по активному контакту
+  const loadCommunicationSettings = async () => {
+    try {
+      const settings = await apiService.getCommunicationSettings();
+      setCommunicationSettings(settings);
+    } catch (err) {
+      console.error('Ошибка загрузки настроек коммуникации:', err);
+    }
+  };
+
   const handleActiveContactClick = () => {
     if (!activeContact) return;
     
@@ -313,43 +460,32 @@ const StudentsListPage: React.FC = () => {
     const contactValue = activeContact.contact_value;
     
     if (contactType === 'telegram') {
-      openTelegramDesktop(contactValue);
+      handleTelegramOpen(contactValue);
     } else if (contactType === 'url') {
       openLink(contactValue);
     }
   };
 
-  useEffect(() => {
-    loadStudents();
-    loadFiltersData();
-    loadActiveContact();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [searchQuery, students, filters]);
-
-  const loadStudents = async () => {
-    setIsLoading(true);
-    setError('');
-    try {
-      const response = await apiService.getStudents({ limit: 500 });
-      const studentsList = response.students || [];
-      setStudents(studentsList);
-      setFilteredStudents(studentsList);
-      setTotal(response.total || 0);
-      await loadActiveContactsForStudents(studentsList);
-    } catch (err: any) {
-      console.error('Error loading students:', err);
-      const errorMessage = err.response?.data?.detail || err.message || 'Ошибка загрузки студентов';
-      setError(typeof errorMessage === 'object' ? 'Ошибка загрузки данных' : errorMessage);
-      setStudents([]);
-      setFilteredStudents([]);
-      setTotal(0);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+   const loadStudents = async () => {
+      setIsLoading(true);
+      setError('');
+      try {
+        const response = await apiService.getStudents({ limit: 500 });
+        const studentsList = response.students || [];
+        setStudents(studentsList);
+        setTotal(response.total || 0);
+        await loadActiveContactsForStudents(studentsList);
+      } catch (err: any) {
+        console.error('Error loading students:', err);
+        const errorMessage = err.response?.data?.detail || err.message || 'Ошибка загрузки студентов';
+        setError(typeof errorMessage === 'object' ? 'Ошибка загрузки данных' : errorMessage);
+        setStudents([]);
+        setFilteredStudents([]);
+        setTotal(0);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
   const runParser = async () => {
     setIsParserRunning(true);
@@ -470,8 +606,14 @@ const StudentsListPage: React.FC = () => {
     result.sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
 
     setFilteredStudents(result);
-    setPage(0);
   };
+  
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredStudents.length / rowsPerPage) - 1);
+    if (page > maxPage && filteredStudents.length > 0) {
+      setPage(maxPage);
+    }
+  }, [filteredStudents.length, rowsPerPage]);
 
   const getActiveFiltersCount = (): number => {
     let count = 0;
@@ -525,6 +667,7 @@ const StudentsListPage: React.FC = () => {
     handleCloseFilters();
     setPage(0);
     localStorage.removeItem(STUDENT_FILTERS_KEY);
+    localStorage.removeItem(STUDENT_FILTERS_TIMESTAMP_KEY);
   };
 
   const handleFilterChange = (key: keyof Filters, value: any) => {
@@ -567,23 +710,65 @@ const StudentsListPage: React.FC = () => {
   };
 
   const openTelegramDesktop = (contact: string) => {
-  let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
-  const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
-  
-  if (isPhoneNumber) {
-    const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
-    // Только tg:// протокол, без setTimeout и window.open
-    window.location.href = `tg://resolve?phone=${phoneNumber}`;
-  } else {
-    window.location.href = `tg://resolve?domain=${cleanContact}`;
-  }
-};
+    if (!contact) return;
+    
+    let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
+    const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
+    
+    let telegramUrl: string;
+    if (isPhoneNumber) {
+      const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
+      telegramUrl = `tg://resolve?phone=${phoneNumber}`;
+    } else {
+      telegramUrl = `tg://resolve?domain=${cleanContact}`;
+    }
+    
+    window.location.href = telegramUrl;
+  };
 
   const openLink = (url: string) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       window.open(url, '_blank');
     } else {
       window.open('https://' + url, '_blank');
+    }
+  };
+
+  const handleTelegramOpen = async (telegramContact: string, studentId?: number) => {
+    if (!telegramContact) {
+      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+      return;
+    }
+
+    const targetDevice = communicationSettings.telegram_open_on;
+
+    if (targetDevice === 'pc') {
+      openTelegramDesktop(telegramContact);
+    } else {
+      if (!studentId) {
+        setSnackbar({ open: true, message: 'ID студента не указан для WebSocket', severity: 'error' });
+        return;
+      }
+      
+      try {
+        const result = await apiService.openTelegramViaWebSocket(studentId, telegramContact);
+        
+        if (result.success) {
+          if (result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.target_device === 'mobile') {
+            setSnackbar({ 
+              open: true, 
+              message: `📱 Telegram открывается на телефоне`, 
+              severity: 'success' 
+            });
+          }
+        } else {
+          openTelegramDesktop(telegramContact);
+        }
+      } catch (err) {
+        openTelegramDesktop(telegramContact);
+      }
     }
   };
 
@@ -656,19 +841,70 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  const handlePriorContactAction = (student: Student, event: React.MouseEvent<HTMLDivElement>) => {
+  const handlePriorContactAction = async (student: Student, event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
     const priorContact = student.prior_contact?.toLowerCase();
+    
     if (priorContact === 'телеграмм' || priorContact === 'telegram') {
       const telegram = student.additional_contacts?.telegram || student.phone;
-      if (telegram) openTelegramDesktop(telegram);
-    } else if (priorContact === 'ссылка' || priorContact === 'url') {
+      if (telegram) {
+        await handleTelegramOpen(telegram, student.id);
+      }
+    } 
+    else if (priorContact === 'ссылка' || priorContact === 'url') {
       const url = student.additional_contacts?.url;
-      if (url) openLink(url);
-    } else if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') {
-      setSnackbar({ open: true, message: 'Звонок доступен только в мобильном приложении', severity: 'info' });
-    } else if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') {
-      setSnackbar({ open: true, message: 'SMS доступны только в мобильном приложении', severity: 'info' });
+      if (url) {
+        try {
+          const result = await apiService.openUrlViaWebSocket(student.id, url);
+          if (result.success && result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.success && result.target_device === 'mobile') {
+            setSnackbar({ open: true, message: `🌐 Ссылка открывается на телефоне`, severity: 'success' });
+          } else {
+            openLink(url);
+          }
+        } catch {
+          openLink(url);
+        }
+      }
+    }
+    else if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') {
+      if (student.phone) {
+        try {
+          const result = await apiService.callStudentViaWebSocket(student.id, student.phone);
+          if (result.success && result.target_device === 'mobile') {
+            setSnackbar({ open: true, message: `📞 Звонок инициирован на телефоне`, severity: 'success' });
+          } else if (result.fallback) {
+            const confirmCall = window.confirm('Мобильное приложение не подключено. Открыть системный звонок?');
+            if (confirmCall) window.location.href = result.fallback;
+          } else {
+            setSnackbar({ open: true, message: result.message, severity: 'error' });
+          }
+        } catch {
+          window.location.href = `tel:${student.phone}`;
+        }
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
+    }
+    else if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') {
+      if (student.phone) {
+        try {
+          const result = await apiService.sendSmsViaWebSocket(student.id, student.phone);
+          if (result.success && result.target_device === 'mobile') {
+            setSnackbar({ open: true, message: `✉️ SMS открыта на телефоне`, severity: 'success' });
+          } else if (result.fallback) {
+            const confirmSms = window.confirm('Мобильное приложение не подключено. Открыть SMS вручную?');
+            if (confirmSms) window.location.href = result.fallback;
+          } else {
+            setSnackbar({ open: true, message: result.message, severity: 'error' });
+          }
+        } catch {
+          window.location.href = `sms:${student.phone}`;
+        }
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
     }
   };
 
@@ -683,23 +919,61 @@ const StudentsListPage: React.FC = () => {
     setSelectedStudent(null);
   };
 
-  const handleMenuAction = (action: string) => {
+  const handleDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await apiService.deleteStudent(studentToDelete.id);
+      setSnackbar({ open: true, message: `Студент "${studentToDelete.full_name}" удален`, severity: 'success' });
+      loadStudents();
+      setDeleteDialogOpen(false);
+      setStudentToDelete(null);
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка удаления: ' + (err.response?.data?.detail || err.message), severity: 'error' });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleMenuAction = async (action: string) => {
     if (!selectedStudent) return;
     switch (action) {
       case 'profile':
         navigate(`/students/${selectedStudent.id}`);
         break;
       case 'telegram':
-        if (selectedStudent.phone) openTelegramDesktop(selectedStudent.phone);
-        else setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+        if (selectedStudent.phone) {
+          await handleTelegramOpen(selectedStudent.phone, selectedStudent.id);
+        } else {
+          setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+        }
         break;
       case 'url':
         const url = selectedStudent.additional_contacts?.url;
-        if (url) openLink(url);
-        else setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+        if (url) {
+          try {
+            const result = await apiService.openUrlViaWebSocket(selectedStudent.id, url);
+            if (result.success && result.target_device === 'pc' && result.data?.url) {
+              window.open(result.data.url, '_blank');
+            } else if (result.success && result.target_device === 'mobile') {
+              setSnackbar({ open: true, message: `🌐 Ссылка открывается на телефоне`, severity: 'success' });
+            } else {
+              openLink(url);
+            }
+          } catch {
+            openLink(url);
+          }
+        } else {
+          setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+        }
         break;
       case 'setActive':
         handleToggleActiveContact(selectedStudent, {} as React.MouseEvent);
+        break;
+      case 'delete':
+        setStudentToDelete(selectedStudent);
+        setDeleteDialogOpen(true);
         break;
     }
     handleMenuClose();
@@ -740,8 +1014,10 @@ const StudentsListPage: React.FC = () => {
     
     setIsAddingStudent(true);
     try {
+      const normalizedFullName = normalizeFullName(newStudent.full_name);
+      
       const studentData = {
-        full_name: newStudent.full_name,
+        full_name: normalizedFullName,
         phone: newStudent.phone,
         russian_student_id: parseInt(newStudent.russian_student_id),
       };
@@ -749,11 +1025,111 @@ const StudentsListPage: React.FC = () => {
       setSnackbar({ open: true, message: 'Студент добавлен', severity: 'success' });
       setAddDialogOpen(false);
       setNewStudent({ full_name: '', phone: '', russian_student_id: '' });
+      setAddDialogTab(0);
       loadStudents();
     } catch (err: any) {
       setSnackbar({ open: true, message: 'Ошибка добавления: ' + (err.response?.data?.detail || err.message), severity: 'error' });
     } finally {
       setIsAddingStudent(false);
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      setExcelFile(event.target.files[0]);
+      setExcelImportResult(null);
+      setShowDuplicatesDialog(false);
+      setPendingExcelFile(null);
+      setReplaceIds(new Set());
+    }
+  };
+
+  const closeAllImportDialogs = () => {
+    setAddDialogOpen(false);
+    setShowDuplicatesDialog(false);
+    setExcelFile(null);
+    setPendingExcelFile(null);
+    setExcelImportResult(null);
+    setReplaceIds(new Set());
+    setDuplicateStrategy('skip');
+  };
+
+  const handleExcelImport = async () => {
+    if (!excelFile) {
+      setSnackbar({ open: true, message: 'Выберите файл Excel', severity: 'warning' });
+      return;
+    }
+
+    setIsImportingExcel(true);
+    setExcelImportResult(null);
+
+    try {
+      const data = await apiService.importExcel(excelFile, 'skip');
+
+      if (data.success) {
+        setExcelImportResult(data);
+        setSnackbar({ open: true, message: data.message, severity: 'success' });
+        loadStudents();
+        closeAllImportDialogs();
+      } else {
+        setExcelImportResult(data);
+        
+        if (data.duplicates_found && data.duplicates_found.length > 0) {
+          setPendingExcelFile(excelFile);
+          setShowDuplicatesDialog(true);
+          setDuplicateStrategy('skip');
+          setReplaceIds(new Set());
+        } else {
+          setSnackbar({ open: true, message: data.message || 'Ошибка импорта', severity: 'error' });
+        }
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка импорта: ' + (err.message || 'Неизвестная ошибка'), severity: 'error' });
+    } finally {
+      setIsImportingExcel(false);
+    }
+  };
+
+  const handleRetryImport = async () => {
+    if (!pendingExcelFile) {
+      setShowDuplicatesDialog(false);
+      return;
+    }
+
+    setIsRetryingImport(true);
+
+    try {
+      let replaceIdsArray: number[] = [];
+      if (duplicateStrategy === 'replace_selected') {
+        replaceIdsArray = Array.from(replaceIds);
+        console.log('📤 Отправка replace_selected с ID:', replaceIdsArray);
+      }
+      
+      const data = await apiService.importExcel(
+        pendingExcelFile, 
+        duplicateStrategy, 
+        duplicateStrategy === 'replace_selected' ? replaceIdsArray : undefined
+      );
+
+      if (data.success) {
+        setExcelImportResult(data);
+        setSnackbar({ open: true, message: data.message, severity: 'success' });
+        loadStudents();
+        closeAllImportDialogs();
+      } else {
+        if (data.duplicates_found && data.duplicates_found.length > 0) {
+          setExcelImportResult(data);
+          setReplaceIds(new Set());
+          setSnackbar({ open: true, message: data.message || 'Обнаружены дубликаты', severity: 'warning' });
+        } else {
+          setSnackbar({ open: true, message: data.message || 'Ошибка импорта', severity: 'error' });
+          setShowDuplicatesDialog(false);
+        }
+      }
+    } catch (err: any) {
+      setSnackbar({ open: true, message: 'Ошибка импорта: ' + (err.message || 'Неизвестная ошибка'), severity: 'error' });
+    } finally {
+      setIsRetryingImport(false);
     }
   };
 
@@ -1166,8 +1542,11 @@ const StudentsListPage: React.FC = () => {
             <TableRow className={styles.tableHeader}>
               <TableCell className={styles.scoreCell}>Баллы</TableCell>
               <TableCell className={styles.studentNameCell}>ФИО</TableCell>
-              <TableCell className={styles.statusCell}>Статусы</TableCell>
-              <TableCell className={styles.profileCell}>Факультет</TableCell>
+              <TableCell className={styles.departmentCell}>Факультет</TableCell>
+              <TableCell className={styles.documentsStatusCell}>Документы</TableCell>
+              <TableCell className={styles.meetingStatusCell}>Сбор</TableCell>
+              <TableCell className={styles.callStatusCell}>Звонок</TableCell>
+              <TableCell className={styles.decisionStatusCell}>Решение</TableCell>
               <TableCell className={styles.priorContactCell}>Приоритетный контакт</TableCell>
               <TableCell className={styles.activeContactCell} align="center">Активный контакт</TableCell>
               <TableCell className={styles.actionsCell} align="center">Действия</TableCell>
@@ -1184,68 +1563,133 @@ const StudentsListPage: React.FC = () => {
                 <TableRow key={student.id} hover onClick={() => handleRowClick(student.id)} className={styles.tableRow}>
                   <TableCell className={styles.scoreCell}>
                     {student.total_score ? (
-                      <Typography variant="body2" className={`${styles.scoreCell} ${student.total_score >= 200 ? styles.scoreHigh : student.total_score >= 150 ? styles.scoreMedium : styles.scoreLow}`}>
+                      <Typography 
+                        variant="body2" 
+                        className={`${styles.scoreValue} ${
+                          student.total_score >= 200 ? styles.scoreHigh : 
+                          student.total_score >= 150 ? styles.scoreMedium : 
+                          styles.scoreLow
+                        }`}
+                      >
                         {student.total_score}
                       </Typography>
                     ) : '—'}
                   </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{student.full_name}</Typography>
+                  
+                  <TableCell className={styles.studentNameCell}>
+                    <Typography variant="body2">
+                      {student.full_name}
+                    </Typography>
+                    {student.phone && (
+                      <Typography variant="caption" className={styles.studentPhone}>
+                        {student.phone}
+                      </Typography>
+                    )}
                   </TableCell>
-                  <TableCell className={styles.statusCell}>
-                    <Box className={styles.statusContainer}>
-                      <SquareChip 
-                        label={getDocumentsStatusLabel(student.documents_status)} 
-                        size="small" 
-                        color={getDocumentsStatusColor(student.documents_status)}
-                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
-                      />
-                      <SquareChip 
-                        label={getMeetingStatusLabel(student.meeting_status)} 
-                        size="small" 
-                        color={getMeetingStatusColor(student.meeting_status)}
-                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
-                      />
-                      <SquareChip 
-                        label={getCallStatusLabel(student.call_status)} 
-                        size="small" 
-                        color={getCallStatusColor(student.call_status)}
-                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
-                      />
-                      <SquareChip 
-                        label={getDecisionStatusLabel(student.decision_status)} 
-                        size="small" 
-                        color={getDecisionStatusColor(student.decision_status)}
-                        sx={{ width: '100%', minWidth: '150px', maxWidth: '150px' }}
-                      />
-                    </Box>
+                  
+                  <TableCell className={styles.departmentCell}>
+                    <Typography variant="body2" className={styles.departmentName}>
+                      {student.department_name || '—'}
+                    </Typography>
+                    {student.speciality_name && (
+                      <Typography variant="caption" className={styles.specialityName}>
+                        {student.speciality_name}
+                      </Typography>
+                    )}
                   </TableCell>
-                  <TableCell className={styles.profileCell}>{student.department_name || '—'}</TableCell>
+                  
+                  <TableCell className={styles.documentsStatusCell}>
+                    <Chip
+                      label={getDocumentsStatusLabel(student.documents_status)}
+                      size="small"
+                      className={`${styles.statusChip} ${styles.documentsChip}`}
+                      sx={{
+                        backgroundColor: getDocumentsStatusColor(student.documents_status) === 'success' ? '#4caf50' :
+                                       getDocumentsStatusColor(student.documents_status) === 'warning' ? '#ff9800' :
+                                       getDocumentsStatusColor(student.documents_status) === 'info' ? '#2196f3' :
+                                       getDocumentsStatusColor(student.documents_status) === 'error' ? '#f44336' : '#9e9e9e',
+                        color: '#fff',
+                      }}
+                    />
+                  </TableCell>
+                  
+                  <TableCell className={styles.meetingStatusCell}>
+                    <Chip
+                      label={getMeetingStatusLabel(student.meeting_status)}
+                      size="small"
+                      sx={{
+                        backgroundColor: getMeetingStatusColor(student.meeting_status) === 'success' ? '#4caf50' :
+                                       getMeetingStatusColor(student.meeting_status) === 'error' ? '#f44336' : '#9e9e9e',
+                        color: '#fff',
+                      }}
+                    />
+                  </TableCell>
+                  
+                  <TableCell className={styles.callStatusCell}>
+                    <Chip
+                      label={getCallStatusLabel(student.call_status)}
+                      size="small"
+                      sx={{
+                        backgroundColor: getCallStatusColor(student.call_status) === 'success' ? '#4caf50' :
+                                       getCallStatusColor(student.call_status) === 'error' ? '#f44336' : '#9e9e9e',
+                        color: '#fff',
+                      }}
+                    />
+                  </TableCell>
+                  
+                  <TableCell className={styles.decisionStatusCell}>
+                    <Chip
+                      label={getDecisionStatusLabel(student.decision_status)}
+                      size="small"
+                      sx={{
+                        backgroundColor: getDecisionStatusColor(student.decision_status) === 'success' ? '#4caf50' :
+                        getDecisionStatusColor(student.decision_status) === 'warning' ? '#ff9800' :
+                        getDecisionStatusColor(student.decision_status) === 'error' ? '#f44336' : '#9e9e9e',
+                        color: '#fff',
+                      }}
+                    />
+                  </TableCell>
+                  
                   <TableCell className={styles.priorContactCell}>
                     {priorIcon ? (
-                      <SquareChip 
-                        icon={priorIcon} 
-                        label={getPriorContactLabel(student.prior_contact)} 
-                        size="small" 
-                        variant="outlined" 
-                        onClick={(e) => handlePriorContactAction(student, e)} 
-                        sx={{ 
-                          borderColor: priorIconColor, 
-                          color: priorIconColor, 
+                      <Chip
+                        icon={priorIcon}
+                        label={getPriorContactLabel(student.prior_contact)}
+                        size="small"
+                        variant="outlined"
+                        onClick={(e) => handlePriorContactAction(student, e)}
+                        className={`${styles.priorContactChip} ${styles[`contactType${getPriorContactType(student.prior_contact)}`]}`}
+                        sx={{
+                          borderColor: priorIconColor,
+                          color: priorIconColor,
                           '& .MuiChip-icon': { color: priorIconColor },
                           cursor: 'pointer',
-                          '&:hover': { transform: 'scale(1.02)' },
-                        }} 
+                        }}
                       />
-                    ) : <Typography variant="body2" color="text.secondary">—</Typography>}
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">—</Typography>
+                    )}
                   </TableCell>
+                  
                   <TableCell className={styles.activeContactCell} align="center" onClick={(e) => e.stopPropagation()}>
                     <Tooltip title={isActive ? "Выключить активный контакт" : "Включить как активный контакт"}>
-                      <IconButton size="small" onClick={(e) => handleToggleActiveContact(student, e)} disabled={isLoadingActive || !student.prior_contact} className={isActive ? styles.activeContactBtn : ''}>
-                        {isLoadingActive ? <CircularProgress size={20} /> : isActive ? <StarIcon className={styles.starActive} /> : <StarIcon />}
+                      <IconButton 
+                        size="small" 
+                        onClick={(e) => handleToggleActiveContact(student, e)} 
+                        disabled={isLoadingActive || !student.prior_contact}
+                        className={isActive ? styles.activeContactBtn : ''}
+                      >
+                        {isLoadingActive ? (
+                          <CircularProgress size={20} />
+                        ) : isActive ? (
+                          <StarIcon className={styles.starActive} sx={{ color: '#FFD700' }} />
+                        ) : (
+                          <StarIcon />
+                        )}
                       </IconButton>
                     </Tooltip>
                   </TableCell>
+                  
                   <TableCell className={styles.actionsCell} align="center" onClick={(e) => e.stopPropagation()}>
                     <IconButton size="small" onClick={(e) => handleMenuOpen(e, student)} title="Дополнительные действия">
                       <MoreVertIcon fontSize="small" />
@@ -1256,7 +1700,7 @@ const StudentsListPage: React.FC = () => {
             })}
             {filteredStudents.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" className={styles.emptyRow}>
+                <TableCell colSpan={10} align="center" className={styles.emptyRow}>
                   <Typography color="text.secondary">Студенты не найдены</Typography>
                 </TableCell>
               </TableRow>
@@ -1264,18 +1708,20 @@ const StudentsListPage: React.FC = () => {
           </TableBody>
         </Table>
         <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          component="div"
-          count={filteredStudents.length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          onRowsPerPageChange={(e) => {
-            setRowsPerPage(parseInt(e.target.value, 10));
-            setPage(0);
-          }}
-          labelRowsPerPage="Строк на странице:"
-        />
+            key={`pagination-${rowsPerPage}-${page}`}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            component="div"
+            count={filteredStudents.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              const newRowsPerPage = parseInt(e.target.value, 10);
+              setRowsPerPage(newRowsPerPage);
+              setPage(0);
+            }}
+            labelRowsPerPage="Строк на странице:"
+          />
       </TableContainer>
 
       <Menu
@@ -1309,40 +1755,302 @@ const StudentsListPage: React.FC = () => {
             <ListItemText primary="Открыть ссылку" secondary={selectedStudent.additional_contacts.url.length > 30 ? `${selectedStudent.additional_contacts.url.substring(0, 30)}...` : selectedStudent.additional_contacts.url} />
           </MenuItem>
         )}
+        <Divider />
+        <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: '#d32f2f' }}>
+          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#d32f2f' }} /></ListItemIcon>
+          <ListItemText primary="Удалить абитуриента" />
+        </MenuItem>
       </Menu>
 
       {/* Диалог добавления студента */}
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Добавить студента</DialogTitle>
+      <Dialog open={addDialogOpen} onClose={() => {
+        setAddDialogOpen(false);
+        setAddDialogTab(0);
+        setExcelFile(null);
+        setExcelImportResult(null);
+        setPendingExcelFile(null);
+        setShowDuplicatesDialog(false);
+        setNewStudent({ full_name: '', phone: '', russian_student_id: '' });
+      }} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Tabs value={addDialogTab} onChange={(_, v) => setAddDialogTab(v)}>
+            <Tab label="Добавить вручную" />
+            <Tab label="Импорт из Excel" icon={<UploadFileIcon />} iconPosition="start" />
+          </Tabs>
+        </DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
-            <TextField
-              label="ФИО *"
-              fullWidth
-              value={newStudent.full_name}
-              onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })}
-            />
-            <TextField
-              label="Телефон *"
-              fullWidth
-              value={newStudent.phone}
-              onChange={(e) => setNewStudent({ ...newStudent, phone: e.target.value })}
-              placeholder="+79991234567"
-            />
-            <TextField
-              label="Российский ID *"
-              fullWidth
-              type="number"
-              value={newStudent.russian_student_id}
-              onChange={(e) => setNewStudent({ ...newStudent, russian_student_id: e.target.value })}
-              placeholder="1234567890"
-            />
-          </Box>
+          {addDialogTab === 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <TextField
+                label="ФИО *"
+                fullWidth
+                value={newStudent.full_name}
+                onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })}
+              />
+              <TextField
+                label="Телефон *"
+                fullWidth
+                value={newStudent.phone}
+                onChange={(e) => setNewStudent({ ...newStudent, phone: e.target.value })}
+                placeholder="+79991234567"
+              />
+              <TextField
+                label="Российский ID *"
+                fullWidth
+                type="number"
+                value={newStudent.russian_student_id}
+                onChange={(e) => setNewStudent({ ...newStudent, russian_student_id: e.target.value })}
+                placeholder="1234567890"
+              />
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+              <Alert severity="info" sx={{ mb: 1 }}>
+                <Typography variant="body2">
+                  <strong>Требования к Excel файлу:</strong>
+                </Typography>
+                <Typography variant="caption" component="div">
+                  • Обязательные колонки: <strong>ФИО, Телефон, ID поступающего</strong>
+                </Typography>
+                <Typography variant="caption" component="div">
+                  • Рекомендуемые: Профиль, Баллы, Приоритет, Форма обучения, Основа обучения, Email
+                </Typography>
+              </Alert>
+              
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<UploadFileIcon />}
+                fullWidth
+                sx={{ py: 1.5 }}
+              >
+                Выбрать файл Excel
+                <input
+                  type="file"
+                  hidden
+                  accept=".xlsx,.xls"
+                  onChange={handleFileSelect}
+                />
+              </Button>
+              
+              {excelFile && (
+                <Alert severity="success" icon={<UploadFileIcon />}>
+                  Выбран файл: {excelFile.name}
+                </Alert>
+              )}
+              
+              {excelImportResult && !excelImportResult.success && excelImportResult.errors && !excelImportResult.duplicates_found && (
+                <Box sx={{ mt: 2 }}>
+                  <Alert severity="error" sx={{ mb: 1 }}>
+                    {excelImportResult.message}
+                  </Alert>
+                  {excelImportResult.errors.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="body2" color="error.main">
+                        ❌ Ошибки ({excelImportResult.errors.length}):
+                      </Typography>
+                      <Box sx={{ maxHeight: 150, overflow: 'auto', mt: 0.5 }}>
+                        {excelImportResult.errors.slice(0, 5).map((err: any, idx: number) => (
+                          <Typography key={idx} variant="caption" component="div" color="error">
+                            Строка {err.row}: {err.error}
+                          </Typography>
+                        ))}
+                        {excelImportResult.errors.length > 5 && (
+                          <Typography variant="caption" color="text.secondary">
+                            ...и еще {excelImportResult.errors.length - 5} ошибок
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )}
+              
+              {excelImportResult && excelImportResult.success && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  {excelImportResult.message}
+                </Alert>
+              )}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddDialogOpen(false)}>Отмена</Button>
-          <Button onClick={handleAddStudent} variant="contained" disabled={isAddingStudent}>
-            {isAddingStudent ? <CircularProgress size={24} /> : 'Добавить'}
+          <Button onClick={() => {
+            setAddDialogOpen(false);
+            setAddDialogTab(0);
+            setExcelFile(null);
+            setExcelImportResult(null);
+            setPendingExcelFile(null);
+            setShowDuplicatesDialog(false);
+          }}>
+            Отмена
+          </Button>
+          {addDialogTab === 0 ? (
+            <Button onClick={handleAddStudent} variant="contained" disabled={isAddingStudent}>
+              {isAddingStudent ? <CircularProgress size={24} /> : 'Добавить'}
+            </Button>
+          ) : (
+            <Button onClick={handleExcelImport} variant="contained" disabled={!excelFile || isImportingExcel}>
+              {isImportingExcel ? <CircularProgress size={24} /> : 'Импортировать'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог подтверждения удаления */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setStudentToDelete(null);
+        }}
+      >
+        <DialogTitle>
+          <Typography variant="h6">Подтверждение удаления</Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            Вы действительно хотите удалить абитуриента <strong>{studentToDelete?.full_name}</strong>?
+          </Typography>
+          <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            Это действие нельзя отменить. Все данные абитуриента будут удалены.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setDeleteDialogOpen(false);
+            setStudentToDelete(null);
+          }}>
+            Отмена
+          </Button>
+          <Button 
+            onClick={handleDeleteStudent} 
+            variant="contained" 
+            color="error"
+            disabled={isDeleting}
+          >
+            {isDeleting ? <CircularProgress size={24} /> : 'Удалить'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог обработки дубликатов */}
+      <Dialog
+        open={showDuplicatesDialog}
+        onClose={() => {
+          setShowDuplicatesDialog(false);
+          setPendingExcelFile(null);
+          setReplaceIds(new Set());
+          setDuplicateStrategy('skip');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Typography variant="h6">Обнаружены дубликаты</Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography gutterBottom>
+            В загруженном файле обнаружены абитуриенты, которые уже есть в системе 
+            ({excelImportResult?.duplicates_found?.length || 0} шт.).
+          </Typography>
+          
+          <Typography gutterBottom sx={{ mt: 2 }}>
+            Выберите, как обработать дубликаты:
+          </Typography>
+          
+          <RadioGroup
+            value={duplicateStrategy}
+            onChange={(e) => {
+              const newStrategy = e.target.value as any;
+              setDuplicateStrategy(newStrategy);
+              if (newStrategy !== 'replace_selected') {
+                setReplaceIds(new Set());
+              }
+            }}
+          >
+            <FormControlLabel 
+              value="skip" 
+              control={<Radio />} 
+              label="Пропустить все дубликаты (не обновлять существующих студентов)" 
+            />
+            <FormControlLabel 
+              value="replace_all" 
+              control={<Radio />} 
+              label="Заменить данные всех дубликатов (обновить информацию)" 
+            />
+            <FormControlLabel 
+              value="replace_selected" 
+              control={<Radio />} 
+              label="Выбрать дубликаты для замены вручную" 
+            />
+          </RadioGroup>
+
+          {duplicateStrategy === 'replace_selected' && excelImportResult?.duplicates_found && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Отметьте студентов, данные которых нужно заменить:
+              </Typography>
+              <Paper variant="outlined" sx={{ maxHeight: 300, overflow: 'auto', p: 1 }}>
+                {excelImportResult.duplicates_found.map((dup: any) => (
+                  <ListItem 
+                    key={dup.id} 
+                    dense
+                    secondaryAction={
+                      <Checkbox
+                        edge="end"
+                        checked={replaceIds.has(dup.id)}
+                        onChange={() => {
+                          const newSet = new Set(replaceIds);
+                          if (newSet.has(dup.id)) {
+                            newSet.delete(dup.id);
+                          } else {
+                            newSet.add(dup.id);
+                          }
+                          setReplaceIds(newSet);
+                        }}
+                      />
+                    }
+                  >
+                    <ListItemText 
+                      primary={dup.full_name} 
+                      secondary={`ID: ${dup.id}`}
+                    />
+                  </ListItem>
+                ))}
+              </Paper>
+              {replaceIds.size === 0 && (
+                <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>
+                  ⚠️ Вы не выбрали ни одного студента для замены. Будет использована стратегия "пропустить".
+                </Typography>
+              )}
+            </Box>
+          )}
+          
+          {duplicateStrategy === 'replace_selected' && replaceIds.size > 0 && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Будет заменено {replaceIds.size} студентов. Остальные дубликаты будут пропущены.
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setShowDuplicatesDialog(false);
+              setPendingExcelFile(null);
+              setReplaceIds(new Set());
+              setDuplicateStrategy('skip');
+            }}
+          >
+            Отмена
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleRetryImport}
+            disabled={isRetryingImport}
+          >
+            {isRetryingImport ? <CircularProgress size={24} /> : 'Продолжить импорт'}
           </Button>
         </DialogActions>
       </Dialog>

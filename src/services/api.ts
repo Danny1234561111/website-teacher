@@ -184,7 +184,51 @@ class ApiService {
   }
 
   async updateStudent(id: number, studentData: Partial<Student>): Promise<Student> {
-    const response = await this.api.put(`/api/students/${id}`, studentData);
+    const dataToSend: any = { ...studentData };
+    
+    if (dataToSend.meeting_status !== undefined) {
+      const val = String(dataToSend.meeting_status).toLowerCase();
+      if (val === 'met') dataToSend.meeting_status = 'MET';
+      else if (val === 'not_met') dataToSend.meeting_status = 'NOT_MET';
+      else if (val === 'unknown') dataToSend.meeting_status = 'UNKNOWN';
+      else dataToSend.meeting_status = 'UNKNOWN';
+    }
+    
+    if (dataToSend.call_status !== undefined) {
+      const val = String(dataToSend.call_status).toLowerCase();
+      if (val === 'reached') dataToSend.call_status = 'REACHED';
+      else if (val === 'not_reached') dataToSend.call_status = 'NOT_REACHED';
+      else if (val === 'unknown') dataToSend.call_status = 'UNKNOWN';
+      else dataToSend.call_status = 'UNKNOWN';
+    }
+    
+    if (dataToSend.decision_status !== undefined) {
+      const val = String(dataToSend.decision_status).toLowerCase();
+      if (val === 'decided') dataToSend.decision_status = 'DECIDED';
+      if (val === 'denied') dataToSend.decision_status = 'DENIED';
+      else if (val === 'thinking') dataToSend.decision_status = 'THINKING';
+      else if (val === 'unknown') dataToSend.decision_status = 'UNKNOWN';
+      else dataToSend.decision_status = 'UNKNOWN';
+    }
+    
+    if (dataToSend.documents_status !== undefined) {
+      const val = String(dataToSend.documents_status).toLowerCase();
+      if (val === 'original_submitted') dataToSend.documents_status = 'ORIGINAL_SUBMITTED';
+      else if (val === 'waiting_original') dataToSend.documents_status = 'WAITING_ORIGINAL';
+      else if (val === 'enrolled') dataToSend.documents_status = 'ENROLLED';
+      else if (val === 'not_submitted') dataToSend.documents_status = 'NOT_SUBMITTED';
+      else dataToSend.documents_status = 'NOT_SUBMITTED'; 
+    }
+    
+    Object.keys(dataToSend).forEach(key => {
+      if (dataToSend[key] === undefined) {
+        delete dataToSend[key];
+      }
+    });
+    
+    console.log('📤 Отправка обновления студента:', { id, dataToSend });
+    
+    const response = await this.api.put(`/api/students/${id}`, dataToSend);
     return response.data;
   }
 
@@ -290,7 +334,7 @@ class ApiService {
 
   async getActiveContact(): Promise<{ contact_type: string; contact_value: string; updated_at?: string } | null> {
     try {
-      const response = await this.api.get('/api/user/contact/get');
+      const response = await this.api.get('/api/user/contact/active/get');
       return response.data;
     } catch (error) {
       return null;
@@ -298,7 +342,7 @@ class ApiService {
   }
 
   async setActiveContact(contactType: string, contactValue: string): Promise<{ contact_type: string; contact_value: string; updated_at?: string }> {
-    const response = await this.api.post('/api/user/contact/set', {
+    const response = await this.api.post('/api/user/contact/active/set', {
       contact_type: contactType,
       contact_value: contactValue,
     });
@@ -306,7 +350,31 @@ class ApiService {
   }
 
   async deleteActiveContact(): Promise<void> {
-    await this.api.delete('/api/user/contact/delete');
+    await this.api.delete('/api/user/contact/active/delete');
+  }
+
+  // ========== EXCEL ИМПОРТ ==========
+
+  async importExcel(
+    file: File,
+    duplicateStrategy: string = 'skip',
+    replaceIds?: number[]
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('duplicate_strategy', duplicateStrategy);
+    
+    if (replaceIds && replaceIds.length > 0) {
+      formData.append('replace_ids', JSON.stringify(replaceIds));
+    }
+    
+    const response = await this.api.post('/api/excel-import/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data;
   }
 
   // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
@@ -337,6 +405,114 @@ class ApiService {
   clearCredentials() {
     localStorage.removeItem('saved_email');
     localStorage.removeItem('saved_password');
+  }
+  
+  async getCommunicationSettings(): Promise<{
+    telegram_open_on: string;
+    vk_open_on: string;
+    url_open_on: string;
+  }> {
+    const response = await this.api.get('/api/user/contact/settings');
+    return response.data;
+  }
+
+  async updateCommunicationSettings(settings: {
+    telegram_open_on?: string;
+    vk_open_on?: string;
+    url_open_on?: string;
+  }): Promise<{
+    telegram_open_on: string;
+    vk_open_on: string;
+    url_open_on: string;
+  }> {
+    const response = await this.api.put('/api/user/contact/settings', settings);
+    return response.data;
+  }
+
+  async callStudentViaWebSocket(studentId: number, phoneNumber: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/call', {
+      student_id: studentId,
+      phone_number: phoneNumber,
+    });
+    return response.data;
+  }
+
+  async sendSmsViaWebSocket(studentId: number, phoneNumber: string, messageText?: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/sms', {
+      student_id: studentId,
+      phone_number: phoneNumber,
+      message_text: messageText,
+    });
+    return response.data;
+  }
+
+  async openTelegramViaWebSocket(studentId: number, telegramContact: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/telegram', {
+      student_id: studentId,
+      telegram_contact: telegramContact,
+    });
+    return response.data;
+  }
+
+  async openVkViaWebSocket(studentId: number, vkContact: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/vk', {
+      student_id: studentId,
+      vk_contact: vkContact,
+    });
+    return response.data;
+  }
+
+  async openUrlViaWebSocket(studentId: number, url: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/url', {
+      student_id: studentId,
+      url: url,
+    });
+    return response.data;
+  }
+
+  async useActiveContact(studentId: number): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    student_name?: string;
+    data?: { url: string };
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/active/use', null, {
+      params: { student_id: studentId }
+    });
+    return response.data;
   }
 }
 
