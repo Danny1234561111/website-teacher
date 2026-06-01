@@ -1,4 +1,4 @@
-import React, { useState, useEffect,useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Container,
   Box,
@@ -93,7 +93,7 @@ const STUDENT_PAGINATION_TIMESTAMP_KEY = 'student_pagination_timestamp';
 const STUDENT_SEARCH_KEY = 'student_search';
 const STUDENT_SEARCH_TIMESTAMP_KEY = 'student_search_timestamp';
 
-// Время жизни кэша в минутах (можно менять здесь)
+// Время жизни кэша в минутах
 const CACHE_TTL_MINUTES = 60;
 
 // Функции для работы с TTL
@@ -174,6 +174,7 @@ const StudentsListPage: React.FC = () => {
   const [filteredStudents, setFilteredStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
   const getInitialSearch = () => {
     const savedSearch = getWithExpiry(STUDENT_SEARCH_KEY, STUDENT_SEARCH_TIMESTAMP_KEY);
     return savedSearch !== null ? savedSearch : '';
@@ -196,7 +197,7 @@ const StudentsListPage: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(initialPagination.rowsPerPage);
   const [total, setTotal] = useState(0);
   const [isParserRunning, setIsParserRunning] = useState(false);
-  const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
+  const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string; student_id?: number } | null>(null);
   
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -220,17 +221,7 @@ const StudentsListPage: React.FC = () => {
   
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [isImportingExcel, setIsImportingExcel] = useState(false);
-  const [excelImportResult, setExcelImportResult] = useState<{
-    success: boolean;
-    total_rows: number;
-    created_students: number;
-    updated_students: number;
-    created_applications: number;
-    errors: any[];
-    warnings: any[];
-    message: string;
-    duplicates_found?: any[];
-  } | null>(null);
+  const [excelImportResult, setExcelImportResult] = useState<any | null>(null);
   
   const [pendingExcelFile, setPendingExcelFile] = useState<File | null>(null);
   const [duplicateStrategy, setDuplicateStrategy] = useState<'skip' | 'replace_all' | 'replace_selected'>('skip');
@@ -338,33 +329,7 @@ const StudentsListPage: React.FC = () => {
 
   const [filters, setFilters] = useState<Filters>(getInitialFilters);
 
-  useEffect(() => {
-    const init = async () => {
-      await loadStudents();
-    };
-    
-    init();
-    loadFiltersData();
-    loadActiveContact();
-    loadCommunicationSettings();
-  }, []);
-
-  useEffect(() => {
-    setWithExpiry(STUDENT_FILTERS_KEY, filters, STUDENT_FILTERS_TIMESTAMP_KEY);
-  }, [filters]);
-
-  useEffect(() => {
-    setWithExpiry(STUDENT_PAGINATION_KEY, { page, rowsPerPage }, STUDENT_PAGINATION_TIMESTAMP_KEY);
-  }, [page, rowsPerPage]);
-
-  useEffect(() => {
-    setWithExpiry(STUDENT_SEARCH_KEY, searchQuery, STUDENT_SEARCH_TIMESTAMP_KEY);
-  }, [searchQuery]);
-
-  
-  useEffect(() => {
-    applyFilters();
-  }, [searchQuery, students, filters]);
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
   const getMeetingStatusLabel = (status: string | null | undefined): string => {
     if (status?.toLowerCase() === 'met') return 'Был на сборе';
@@ -430,17 +395,249 @@ const StudentsListPage: React.FC = () => {
     return 'default';
   };
 
+  // ==================== КОНТАКТНЫЕ ФУНКЦИИ ====================
+
+  // Получение значения контакта по приоритету студента
+  const getContactValue = (student: Student): string | null => {
+    const priorContact = student.prior_contact?.toLowerCase();
+    if (priorContact === 'звонок' || priorContact === 'просто сообщения' || priorContact === 'phone' || priorContact === 'call' || priorContact === 'sms') {
+      return student.phone || null;
+    }
+    if (priorContact === 'телеграмм' || priorContact === 'telegram') {
+      return student.additional_contacts?.telegram || student.phone || null;
+    }
+    if (priorContact === 'ссылка' || priorContact === 'url') {
+      return student.additional_contacts?.url || null;
+    }
+    return null;
+  };
+
+  // Получение типа контакта по приоритету студента
+  const getContactType = (student: Student): string | null => {
+    const priorContact = student.prior_contact?.toLowerCase();
+    if (priorContact === 'телеграмм' || priorContact === 'telegram') return 'telegram';
+    if (priorContact === 'ссылка' || priorContact === 'url') return 'url';
+    if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') return 'call';
+    if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') return 'sms';
+    return null;
+  };
+
+  // Выполнение действия по приоритетному контакту
+  const executePriorContactAction = async (student: Student) => {
+    const priorContact = student.prior_contact?.toLowerCase();
+    
+    if (priorContact === 'телеграмм' || priorContact === 'telegram') {
+      const telegram = student.additional_contacts?.telegram || student.phone;
+      if (telegram) {
+        await handleTelegramOpen(telegram, student.id);
+      } else {
+        setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+      }
+    } 
+    else if (priorContact === 'ссылка' || priorContact === 'url') {
+      const url = student.additional_contacts?.url;
+      if (url) {
+        try {
+          const result = await apiService.openUrlViaWebSocket(student.id, url);
+          if (result.success && result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.success && result.target_device === 'mobile') {
+            setSnackbar({ open: true, message: `🌐 Ссылка открывается на телефоне`, severity: 'success' });
+          } else {
+            openLink(url);
+          }
+        } catch {
+          openLink(url);
+        }
+      } else {
+        setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+      }
+    }
+    else if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') {
+      if (student.phone) {
+        await handleCall(student.phone, student.id);
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
+    }
+    else if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') {
+      if (student.phone) {
+        await handleSms(student.phone, student.id);
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
+    }
+  };
+
+  // Обработка звонка через WebSocket
+  const handleCall = async (phoneNumber: string, studentId?: number) => {
+    if (!phoneNumber) {
+      setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      return;
+    }
+
+    try {
+      if (studentId) {
+        const result = await apiService.callStudentViaWebSocket(studentId, phoneNumber);
+        if (result.success && result.target_device === 'mobile') {
+          setSnackbar({ open: true, message: `📞 Звонок инициирован на телефоне`, severity: 'success' });
+          return;
+        } else if (result.fallback) {
+          const confirmCall = window.confirm('Мобильное приложение не подключено. Открыть системный звонок?');
+          if (confirmCall) window.location.href = result.fallback;
+          return;
+        }
+      }
+      window.location.href = `tel:${phoneNumber}`;
+    } catch (err) {
+      window.location.href = `tel:${phoneNumber}`;
+    }
+  };
+
+  // Обработка SMS через WebSocket
+  const handleSms = async (phoneNumber: string, studentId?: number) => {
+    if (!phoneNumber) {
+      setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      return;
+    }
+
+    try {
+      if (studentId) {
+        const result = await apiService.sendSmsViaWebSocket(studentId, phoneNumber);
+        if (result.success && result.target_device === 'mobile') {
+          setSnackbar({ open: true, message: `✉️ SMS открыта на телефоне`, severity: 'success' });
+          return;
+        } else if (result.fallback) {
+          const confirmSms = window.confirm('Мобильное приложение не подключено. Открыть SMS вручную?');
+          if (confirmSms) window.location.href = result.fallback;
+          return;
+        }
+      }
+      window.location.href = `sms:${phoneNumber}`;
+    } catch (err) {
+      window.location.href = `sms:${phoneNumber}`;
+    }
+  };
+
+  const openTelegramDesktop = (contact: string) => {
+    if (!contact) return;
+    
+    let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
+    const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
+    
+    let telegramUrl: string;
+    if (isPhoneNumber) {
+      const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
+      telegramUrl = `tg://resolve?phone=${phoneNumber}`;
+    } else {
+      telegramUrl = `tg://resolve?domain=${cleanContact}`;
+    }
+    
+    window.location.href = telegramUrl;
+  };
+
+  const openLink = (url: string) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      window.open(url, '_blank');
+    } else {
+      window.open('https://' + url, '_blank');
+    }
+  };
+
+  const handleTelegramOpen = async (telegramContact: string, studentId?: number) => {
+    if (!telegramContact) {
+      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+      return;
+    }
+
+    const targetDevice = communicationSettings.telegram_open_on;
+
+    if (targetDevice === 'pc') {
+      openTelegramDesktop(telegramContact);
+    } else {
+      if (!studentId) {
+        setSnackbar({ open: true, message: 'ID студента не указан для WebSocket', severity: 'error' });
+        return;
+      }
+      
+      try {
+        const result = await apiService.openTelegramViaWebSocket(studentId, telegramContact);
+        
+        if (result.success) {
+          if (result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.target_device === 'mobile') {
+            setSnackbar({ 
+              open: true, 
+              message: `📱 Telegram открывается на телефоне`, 
+              severity: 'success' 
+            });
+          }
+        } else {
+          openTelegramDesktop(telegramContact);
+        }
+      } catch (err) {
+        openTelegramDesktop(telegramContact);
+      }
+    }
+  };
+
+  // ==================== ЗАГРУЗКА ДАННЫХ ====================
+
   const loadActiveContact = async () => {
     try {
       const contact = await apiService.getActiveContact();
-      if (contact && (contact.contact_type === 'telegram' || contact.contact_type === 'url')) {
-        setActiveContact(contact);
+      if (contact) {
+        // Находим студента, к которому относится этот активный контакт
+        const studentWithActiveContact = students.find(s => 
+          s.phone === contact.contact_value || 
+          s.additional_contacts?.telegram === contact.contact_value ||
+          s.additional_contacts?.url === contact.contact_value
+        );
+        setActiveContact({
+          contact_type: contact.contact_type,
+          contact_value: contact.contact_value,
+          student_id: studentWithActiveContact?.id
+        });
       } else {
         setActiveContact(null);
       }
     } catch (err) {
       console.error('Ошибка загрузки активного контакта:', err);
       setActiveContact(null);
+    }
+  };
+
+  // Обработка клика по активному контакту в шапке
+  const handleActiveContactClick = async () => {
+    if (!activeContact) return;
+    
+    // Находим студента по ID из активного контакта
+    const student = students.find(s => s.id === activeContact.student_id);
+    if (student) {
+      // Используем ту же логику, что и для приоритетного контакта
+      await executePriorContactAction(student);
+    } else {
+      // Если студент не найден, пробуем по значению контакта
+      const contactType = activeContact.contact_type?.toLowerCase();
+      const contactValue = activeContact.contact_value;
+      
+      switch (contactType) {
+        case 'telegram':
+          await handleTelegramOpen(contactValue);
+          break;
+        case 'url':
+          openLink(contactValue);
+          break;
+        case 'call':
+          await handleCall(contactValue);
+          break;
+        case 'sms':
+          await handleSms(contactValue);
+          break;
+        default:
+          setSnackbar({ open: true, message: 'Неизвестный тип контакта', severity: 'warning' });
+      }
     }
   };
 
@@ -453,39 +650,47 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  const handleActiveContactClick = () => {
-    if (!activeContact) return;
-    
-    const contactType = activeContact.contact_type?.toLowerCase();
-    const contactValue = activeContact.contact_value;
-    
-    if (contactType === 'telegram') {
-      handleTelegramOpen(contactValue);
-    } else if (contactType === 'url') {
-      openLink(contactValue);
+  const loadStudents = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const response = await apiService.getStudents({ limit: 500 });
+      const studentsList = response.students || [];
+      setStudents(studentsList);
+      setTotal(response.total || 0);
+      await loadActiveContactsForStudents(studentsList);
+      await loadActiveContact();
+    } catch (err: any) {
+      console.error('Error loading students:', err);
+      const errorMessage = err.response?.data?.detail || err.message || 'Ошибка загрузки студентов';
+      setError(typeof errorMessage === 'object' ? 'Ошибка загрузки данных' : errorMessage);
+      setStudents([]);
+      setFilteredStudents([]);
+      setTotal(0);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-   const loadStudents = async () => {
-      setIsLoading(true);
-      setError('');
-      try {
-        const response = await apiService.getStudents({ limit: 500 });
-        const studentsList = response.students || [];
-        setStudents(studentsList);
-        setTotal(response.total || 0);
-        await loadActiveContactsForStudents(studentsList);
-      } catch (err: any) {
-        console.error('Error loading students:', err);
-        const errorMessage = err.response?.data?.detail || err.message || 'Ошибка загрузки студентов';
-        setError(typeof errorMessage === 'object' ? 'Ошибка загрузки данных' : errorMessage);
-        setStudents([]);
-        setFilteredStudents([]);
-        setTotal(0);
-      } finally {
-        setIsLoading(false);
+  const loadActiveContactsForStudents = async (studentsList: Student[]) => {
+    try {
+      const activeContactData = await apiService.getActiveContact();
+      const newMap = new Map<number, { contact_type: string; contact_value: string } | null>();
+      if (activeContactData) {
+        const studentWithActiveContact = studentsList.find(s => 
+          s.phone === activeContactData.contact_value || 
+          s.additional_contacts?.telegram === activeContactData.contact_value ||
+          s.additional_contacts?.url === activeContactData.contact_value
+        );
+        if (studentWithActiveContact) {
+          newMap.set(studentWithActiveContact.id, activeContactData);
+        }
       }
-    };
+      setActiveContactMap(newMap);
+    } catch (err) {
+      console.error('Ошибка загрузки активных контактов:', err);
+    }
+  };
 
   const runParser = async () => {
     setIsParserRunning(true);
@@ -522,25 +727,7 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  const loadActiveContactsForStudents = async (studentsList: Student[]) => {
-    try {
-      const activeContact = await apiService.getActiveContact();
-      const newMap = new Map<number, { contact_type: string; contact_value: string } | null>();
-      if (activeContact) {
-        const studentWithActiveContact = studentsList.find(s => 
-          s.phone === activeContact.contact_value || 
-          s.additional_contacts?.telegram === activeContact.contact_value ||
-          s.additional_contacts?.url === activeContact.contact_value
-        );
-        if (studentWithActiveContact) {
-          newMap.set(studentWithActiveContact.id, activeContact);
-        }
-      }
-      setActiveContactMap(newMap);
-    } catch (err) {
-      console.error('Ошибка загрузки активных контактов:', err);
-    }
-  };
+  // ==================== ФИЛЬТРАЦИЯ И СОРТИРОВКА ====================
 
   const applyFilters = () => {
     let result = [...students];
@@ -614,6 +801,32 @@ const StudentsListPage: React.FC = () => {
       setPage(maxPage);
     }
   }, [filteredStudents.length, rowsPerPage]);
+
+  useEffect(() => {
+    const init = async () => {
+      await loadStudents();
+    };
+    
+    init();
+    loadFiltersData();
+    loadCommunicationSettings();
+  }, []);
+
+  useEffect(() => {
+    setWithExpiry(STUDENT_FILTERS_KEY, filters, STUDENT_FILTERS_TIMESTAMP_KEY);
+  }, [filters]);
+
+  useEffect(() => {
+    setWithExpiry(STUDENT_PAGINATION_KEY, { page, rowsPerPage }, STUDENT_PAGINATION_TIMESTAMP_KEY);
+  }, [page, rowsPerPage]);
+
+  useEffect(() => {
+    setWithExpiry(STUDENT_SEARCH_KEY, searchQuery, STUDENT_SEARCH_TIMESTAMP_KEY);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [searchQuery, students, filters]);
 
   const getActiveFiltersCount = (): number => {
     let count = 0;
@@ -700,6 +913,8 @@ const StudentsListPage: React.FC = () => {
     setPage(0);
   };
 
+  // ==================== ДЕЙСТВИЯ СО СТУДЕНТАМИ ====================
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -707,92 +922,6 @@ const StudentsListPage: React.FC = () => {
 
   const handleRowClick = (studentId: number) => {
     navigate(`/students/${studentId}`);
-  };
-
-  const openTelegramDesktop = (contact: string) => {
-    if (!contact) return;
-    
-    let cleanContact = contact.startsWith('@') ? contact.substring(1) : contact;
-    const isPhoneNumber = /^[\d+\s\-\(\)]+$/.test(cleanContact);
-    
-    let telegramUrl: string;
-    if (isPhoneNumber) {
-      const phoneNumber = cleanContact.replace(/[^\d+]/g, '');
-      telegramUrl = `tg://resolve?phone=${phoneNumber}`;
-    } else {
-      telegramUrl = `tg://resolve?domain=${cleanContact}`;
-    }
-    
-    window.location.href = telegramUrl;
-  };
-
-  const openLink = (url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      window.open(url, '_blank');
-    } else {
-      window.open('https://' + url, '_blank');
-    }
-  };
-
-  const handleTelegramOpen = async (telegramContact: string, studentId?: number) => {
-    if (!telegramContact) {
-      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
-      return;
-    }
-
-    const targetDevice = communicationSettings.telegram_open_on;
-
-    if (targetDevice === 'pc') {
-      openTelegramDesktop(telegramContact);
-    } else {
-      if (!studentId) {
-        setSnackbar({ open: true, message: 'ID студента не указан для WebSocket', severity: 'error' });
-        return;
-      }
-      
-      try {
-        const result = await apiService.openTelegramViaWebSocket(studentId, telegramContact);
-        
-        if (result.success) {
-          if (result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.target_device === 'mobile') {
-            setSnackbar({ 
-              open: true, 
-              message: `📱 Telegram открывается на телефоне`, 
-              severity: 'success' 
-            });
-          }
-        } else {
-          openTelegramDesktop(telegramContact);
-        }
-      } catch (err) {
-        openTelegramDesktop(telegramContact);
-      }
-    }
-  };
-
-  const getContactValue = (student: Student): string | null => {
-    const priorContact = student.prior_contact?.toLowerCase();
-    if (priorContact === 'звонок' || priorContact === 'просто сообщения' || priorContact === 'phone' || priorContact === 'call' || priorContact === 'sms') {
-      return student.phone || null;
-    }
-    if (priorContact === 'телеграмм' || priorContact === 'telegram') {
-      return student.additional_contacts?.telegram || student.phone || null;
-    }
-    if (priorContact === 'ссылка' || priorContact === 'url') {
-      return student.additional_contacts?.url || null;
-    }
-    return null;
-  };
-
-  const getContactTypeForApi = (student: Student): string | null => {
-    const priorContact = student.prior_contact?.toLowerCase();
-    if (priorContact === 'телеграмм' || priorContact === 'telegram') return 'telegram';
-    if (priorContact === 'ссылка' || priorContact === 'url') return 'url';
-    if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') return 'call';
-    if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') return 'sms';
-    return null;
   };
 
   const handleToggleActiveContact = async (student: Student, event: React.MouseEvent) => {
@@ -811,7 +940,7 @@ const StudentsListPage: React.FC = () => {
         setLoadingActiveContact(null);
       }
     } else {
-      const contactType = getContactTypeForApi(student);
+      const contactType = getContactType(student);
       const contactValue = getContactValue(student);
       if (!student.prior_contact) {
         setSnackbar({ open: true, message: 'У студента не указан приоритетный контакт', severity: 'warning' });
@@ -837,73 +966,6 @@ const StudentsListPage: React.FC = () => {
         setSnackbar({ open: true, message: 'Ошибка включения', severity: 'error' });
       } finally {
         setLoadingActiveContact(null);
-      }
-    }
-  };
-
-  const handlePriorContactAction = async (student: Student, event: React.MouseEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-    const priorContact = student.prior_contact?.toLowerCase();
-    
-    if (priorContact === 'телеграмм' || priorContact === 'telegram') {
-      const telegram = student.additional_contacts?.telegram || student.phone;
-      if (telegram) {
-        await handleTelegramOpen(telegram, student.id);
-      }
-    } 
-    else if (priorContact === 'ссылка' || priorContact === 'url') {
-      const url = student.additional_contacts?.url;
-      if (url) {
-        try {
-          const result = await apiService.openUrlViaWebSocket(student.id, url);
-          if (result.success && result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.success && result.target_device === 'mobile') {
-            setSnackbar({ open: true, message: `🌐 Ссылка открывается на телефоне`, severity: 'success' });
-          } else {
-            openLink(url);
-          }
-        } catch {
-          openLink(url);
-        }
-      }
-    }
-    else if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') {
-      if (student.phone) {
-        try {
-          const result = await apiService.callStudentViaWebSocket(student.id, student.phone);
-          if (result.success && result.target_device === 'mobile') {
-            setSnackbar({ open: true, message: `📞 Звонок инициирован на телефоне`, severity: 'success' });
-          } else if (result.fallback) {
-            const confirmCall = window.confirm('Мобильное приложение не подключено. Открыть системный звонок?');
-            if (confirmCall) window.location.href = result.fallback;
-          } else {
-            setSnackbar({ open: true, message: result.message, severity: 'error' });
-          }
-        } catch {
-          window.location.href = `tel:${student.phone}`;
-        }
-      } else {
-        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
-      }
-    }
-    else if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') {
-      if (student.phone) {
-        try {
-          const result = await apiService.sendSmsViaWebSocket(student.id, student.phone);
-          if (result.success && result.target_device === 'mobile') {
-            setSnackbar({ open: true, message: `✉️ SMS открыта на телефоне`, severity: 'success' });
-          } else if (result.fallback) {
-            const confirmSms = window.confirm('Мобильное приложение не подключено. Открыть SMS вручную?');
-            if (confirmSms) window.location.href = result.fallback;
-          } else {
-            setSnackbar({ open: true, message: result.message, severity: 'error' });
-          }
-        } catch {
-          window.location.href = `sms:${student.phone}`;
-        }
-      } else {
-        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
       }
     }
   };
@@ -942,11 +1004,26 @@ const StudentsListPage: React.FC = () => {
       case 'profile':
         navigate(`/students/${selectedStudent.id}`);
         break;
-      case 'telegram':
+      case 'call':
         if (selectedStudent.phone) {
-          await handleTelegramOpen(selectedStudent.phone, selectedStudent.id);
+          await handleCall(selectedStudent.phone, selectedStudent.id);
         } else {
           setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+        }
+        break;
+      case 'sms':
+        if (selectedStudent.phone) {
+          await handleSms(selectedStudent.phone, selectedStudent.id);
+        } else {
+          setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+        }
+        break;
+      case 'telegram':
+        const telegram = selectedStudent.additional_contacts?.telegram || selectedStudent.phone;
+        if (telegram) {
+          await handleTelegramOpen(telegram, selectedStudent.id);
+        } else {
+          setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
         }
         break;
       case 'url':
@@ -979,33 +1056,6 @@ const StudentsListPage: React.FC = () => {
     handleMenuClose();
   };
 
-  const getPriorContactIcon = (priorContact: string | null | undefined): React.ReactElement | null => {
-    const contact = priorContact?.toLowerCase();
-    if (contact === 'телеграмм' || contact === 'telegram') return <TelegramIcon fontSize="small" />;
-    if (contact === 'ссылка' || contact === 'url') return <LinkIcon fontSize="small" />;
-    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return <PhoneIcon fontSize="small" />;
-    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return <SmsIcon fontSize="small" />;
-    return null;
-  };
-
-  const getPriorContactLabel = (priorContact: string | null | undefined): string => {
-    const contact = priorContact?.toLowerCase();
-    if (contact === 'телеграмм' || contact === 'telegram') return 'Telegram';
-    if (contact === 'ссылка' || contact === 'url') return 'Ссылка';
-    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return 'Звонок';
-    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return 'SMS';
-    return priorContact || '—';
-  };
-
-  const getPriorContactIconColor = (priorContact: string | null | undefined): string => {
-    const contact = priorContact?.toLowerCase();
-    if (contact === 'телеграмм' || contact === 'telegram') return '#26A5E4';
-    if (contact === 'ссылка' || contact === 'url') return '#9C27B0';
-    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return '#4CAF50';
-    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return '#2196F3';
-    return '#9E9E9E';
-  };
-
   const handleAddStudent = async () => {
     if (!newStudent.full_name || !newStudent.phone || !newStudent.russian_student_id) {
       setSnackbar({ open: true, message: 'Заполните все поля', severity: 'error' });
@@ -1032,6 +1082,38 @@ const StudentsListPage: React.FC = () => {
     } finally {
       setIsAddingStudent(false);
     }
+  };
+
+  const handlePriorContactAction = async (student: Student, event: React.MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    await executePriorContactAction(student);
+  };
+
+  const getPriorContactIcon = (priorContact: string | null | undefined): React.ReactElement | null => {
+    const contact = priorContact?.toLowerCase();
+    if (contact === 'телеграмм' || contact === 'telegram') return <TelegramIcon fontSize="small" />;
+    if (contact === 'ссылка' || contact === 'url') return <LinkIcon fontSize="small" />;
+    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return <PhoneIcon fontSize="small" />;
+    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return <SmsIcon fontSize="small" />;
+    return null;
+  };
+
+  const getPriorContactLabel = (priorContact: string | null | undefined): string => {
+    const contact = priorContact?.toLowerCase();
+    if (contact === 'телеграмм' || contact === 'telegram') return 'Telegram';
+    if (contact === 'ссылка' || contact === 'url') return 'Ссылка';
+    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return 'Звонок';
+    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return 'SMS';
+    return priorContact || '—';
+  };
+
+  const getPriorContactIconColor = (priorContact: string | null | undefined): string => {
+    const contact = priorContact?.toLowerCase();
+    if (contact === 'телеграмм' || contact === 'telegram') return '#26A5E4';
+    if (contact === 'ссылка' || contact === 'url') return '#9C27B0';
+    if (contact === 'звонок' || contact === 'phone' || contact === 'call') return '#4CAF50';
+    if (contact === 'просто сообщения' || contact === 'sms' || contact === 'messages') return '#2196F3';
+    return '#9E9E9E';
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1414,8 +1496,9 @@ const StudentsListPage: React.FC = () => {
           </Typography>
         </Box>
         <Box className={styles.headerActions}>
+          {/* ИСПРАВЛЕНО: Кнопка активного контакта работает по логике приоритетного контакта */}
           {activeContact && (
-            <Tooltip title={`Активный контакт: ${activeContact.contact_type === 'telegram' ? 'Telegram' : 'Ссылка'}`}>
+            <Tooltip title="Активный контакт">
               <IconButton onClick={handleActiveContactClick} title="Активный контакт">
                 <img 
                   src={require('../icons/link.png')} 
@@ -1745,6 +1828,14 @@ const StudentsListPage: React.FC = () => {
           </ListItemText>
         </MenuItem>
         <Divider />
+        <MenuItem onClick={() => handleMenuAction('call')}>
+          <ListItemIcon><PhoneIcon fontSize="small" sx={{ color: '#4CAF50' }} /></ListItemIcon>
+          <ListItemText primary="Позвонить" secondary={selectedStudent?.phone || 'Номер не указан'} />
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('sms')}>
+          <ListItemIcon><SmsIcon fontSize="small" sx={{ color: '#2196F3' }} /></ListItemIcon>
+          <ListItemText primary="SMS" secondary={selectedStudent?.phone || 'Номер не указан'} />
+        </MenuItem>
         <MenuItem onClick={() => handleMenuAction('telegram')}>
           <ListItemIcon><TelegramIcon fontSize="small" sx={{ color: '#26A5E4' }} /></ListItemIcon>
           <ListItemText primary="Telegram" secondary={selectedStudent?.phone || 'Номер не указан'} />

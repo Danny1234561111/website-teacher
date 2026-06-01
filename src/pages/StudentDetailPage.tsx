@@ -25,6 +25,7 @@ import {
   ListItem,
   ListItemText,
   ListItemAvatar,
+  ListItemIcon,
   Switch,
   FormControlLabel,
   Snackbar,
@@ -36,6 +37,7 @@ import {
   TableRow,
   Collapse,
   Tooltip,
+  Menu,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -67,6 +69,7 @@ import {
   Logout as LogoutIcon,
   AccountCircle as AccountCircleIcon,
   Star as StarIcon,
+  MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -134,7 +137,8 @@ const StudentDetailPage: React.FC = () => {
   const [additionalContacts, setAdditionalContacts] = useState<Record<string, string>>({});
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning' });
   const [isParserRunning, setIsParserRunning] = useState(false);
-  const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
+  const [activeContact, setActiveContact] = useState<{ contact_type: string; contact_value: string; student_id?: number } | null>(null);
+  const [anchorElContactMenu, setAnchorElContactMenu] = useState<null | HTMLElement>(null);
   
   const [serverActiveContact, setServerActiveContact] = useState<{ contact_type: string; contact_value: string } | null>(null);
   const [isActiveContactEnabledForThisStudent, setIsActiveContactEnabledForThisStudent] = useState(false);
@@ -254,6 +258,42 @@ const StudentDetailPage: React.FC = () => {
       'ссылка': 'url',
     };
     return mapping[priorContact] || 'other';
+  };
+
+  // ========== ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ ДЕЙСТВИЯ ПО ПРИОРИТЕТНОМУ КОНТАКТУ ==========
+  const executePriorContactAction = async (studentData: Student) => {
+    const priorContact = studentData.prior_contact?.toLowerCase();
+    
+    if (priorContact === 'телеграмм' || priorContact === 'telegram') {
+      const telegram = studentData.additional_contacts?.telegram || studentData.phone;
+      if (telegram) {
+        await handleOpenTelegram(telegram);
+      } else {
+        setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+      }
+    } 
+    else if (priorContact === 'ссылка' || priorContact === 'url') {
+      const url = studentData.additional_contacts?.url;
+      if (url) {
+        await handleOpenUrl(url);
+      } else {
+        setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+      }
+    }
+    else if (priorContact === 'звонок' || priorContact === 'phone' || priorContact === 'call') {
+      if (studentData.phone) {
+        await handleCall();
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
+    }
+    else if (priorContact === 'просто сообщения' || priorContact === 'sms' || priorContact === 'messages') {
+      if (studentData.phone) {
+        await handleSendSms();
+      } else {
+        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
+      }
+    }
   };
 
   const getApplicationStatusText = (status: string | null): string => {
@@ -385,13 +425,11 @@ const StudentDetailPage: React.FC = () => {
       return;
     }
     
-    const targetDevice = communicationSettings.telegram_open_on; // Используем настройку для звонков
+    const targetDevice = communicationSettings.telegram_open_on;
 
     if (targetDevice === 'pc') {
-      // На ПК - открываем системный звонок
       window.location.href = `tel:${student.phone}`;
     } else {
-      // На телефоне - через WebSocket
       try {
         const result = await apiService.callStudentViaWebSocket(student.id, student.phone);
         
@@ -405,17 +443,13 @@ const StudentDetailPage: React.FC = () => {
           } else {
             setSnackbar({ open: true, message: result.message, severity: 'info' });
           }
-        } else {
-          if (result.fallback) {
-            const confirmCall = window.confirm(
-              'Мобильное приложение не подключено. Открыть системный звонок?'
-            );
-            if (confirmCall) {
-              window.location.href = result.fallback;
-            }
-          } else {
-            setSnackbar({ open: true, message: result.message, severity: 'error' });
+        } else if (result.fallback) {
+          const confirmCall = window.confirm('Мобильное приложение не подключено. Открыть системный звонок?');
+          if (confirmCall) {
+            window.location.href = result.fallback;
           }
+        } else {
+          setSnackbar({ open: true, message: result.message, severity: 'error' });
         }
       } catch (err: any) {
         setSnackbar({ open: true, message: 'Ошибка при звонке', severity: 'error' });
@@ -430,13 +464,11 @@ const StudentDetailPage: React.FC = () => {
       return;
     }
     
-    const targetDevice = communicationSettings.telegram_open_on; // Используем настройку для SMS
+    const targetDevice = communicationSettings.telegram_open_on;
 
     if (targetDevice === 'pc') {
-      // На ПК - открываем системное SMS
       window.location.href = `sms:${student.phone}`;
     } else {
-      // На телефоне - через WebSocket
       try {
         const result = await apiService.sendSmsViaWebSocket(
           student.id, 
@@ -453,9 +485,7 @@ const StudentDetailPage: React.FC = () => {
             });
           }
         } else if (result.fallback) {
-          const confirmSms = window.confirm(
-            'Мобильное приложение не подключено. Открыть SMS вручную?'
-          );
+          const confirmSms = window.confirm('Мобильное приложение не подключено. Открыть SMS вручную?');
           if (confirmSms) {
             window.location.href = result.fallback;
           }
@@ -469,35 +499,6 @@ const StudentDetailPage: React.FC = () => {
   };
 
   // ========== ФУНКЦИИ ДЛЯ TELEGRAM С УЧЕТОМ НАСТРОЕК ==========
-
-  const loadActiveContact = async () => {
-    try {
-      const contact = await apiService.getActiveContact();
-      if (contact && (contact.contact_type === 'telegram' || contact.contact_type === 'url')) {
-        setActiveContact(contact);
-      } else {
-        setActiveContact(null);
-      }
-    } catch (err) {
-      console.error('Ошибка загрузки активного контакта:', err);
-      setActiveContact(null);
-    }
-  };
-
-  const handleActiveContactClick = () => {
-    if (!activeContact) return;
-    
-    const contactType = activeContact.contact_type?.toLowerCase();
-    const contactValue = activeContact.contact_value;
-    
-    if (contactType === 'telegram') {
-      handleOpenTelegram(contactValue);
-    } else if (contactType === 'url') {
-      handleOpenLink(contactValue);
-    }
-  };
-
-  // Прямое открытие Telegram Desktop (для ПК)
   const openTelegramDesktop = (contact: string) => {
     if (!contact) return;
     
@@ -514,12 +515,169 @@ const StudentDetailPage: React.FC = () => {
     window.location.href = telegramUrl;
   };
 
-  const getActiveContactLabel = () => {
-    const contactType = activeContact?.contact_type?.toLowerCase();
-    switch (contactType) {
-      case 'telegram': return 'Telegram';
-      case 'url': return 'Ссылка';
-      default: return 'Активный контакт';
+  const handleOpenTelegram = async (telegramContact: string) => {
+    if (!telegramContact) {
+      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+      return;
+    }
+    
+    const targetDevice = communicationSettings.telegram_open_on;
+
+    if (targetDevice === 'pc') {
+      openTelegramDesktop(telegramContact);
+    } else {
+      try {
+        const result = await apiService.openTelegramViaWebSocket(student!.id, telegramContact);
+        
+        if (result.success) {
+          if (result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.target_device === 'mobile') {
+            setSnackbar({ 
+              open: true, 
+              message: `📱 Telegram открывается на телефоне`, 
+              severity: 'success' 
+            });
+          } else {
+            openTelegramDesktop(telegramContact);
+          }
+        } else {
+          openTelegramDesktop(telegramContact);
+        }
+      } catch (err) {
+        openTelegramDesktop(telegramContact);
+      }
+    }
+  };
+
+  const handleOpenUrl = async (url: string) => {
+    if (!url) {
+      setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+      return;
+    }
+    
+    const targetDevice = communicationSettings.url_open_on;
+
+    if (targetDevice === 'pc') {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        window.open(url, '_blank');
+      } else {
+        window.open('https://' + url, '_blank');
+      }
+    } else {
+      try {
+        const result = await apiService.openUrlViaWebSocket(student!.id, url);
+        
+        if (result.success) {
+          if (result.target_device === 'pc' && result.data?.url) {
+            window.open(result.data.url, '_blank');
+          } else if (result.target_device === 'mobile') {
+            setSnackbar({ 
+              open: true, 
+              message: `🌐 Ссылка открывается на телефоне`, 
+              severity: 'success' 
+            });
+          }
+        } else {
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            window.open(url, '_blank');
+          } else {
+            window.open('https://' + url, '_blank');
+          }
+        }
+      } catch (err) {
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          window.open(url, '_blank');
+        } else {
+          window.open('https://' + url, '_blank');
+        }
+      }
+    }
+  };
+
+  // ========== АКТИВНЫЙ КОНТАКТ ==========
+  const loadActiveContact = async () => {
+    try {
+      const contact = await apiService.getActiveContact();
+      if (contact) {
+        const studentWithActiveContact = student && (student.phone === contact.contact_value ||
+          additionalContacts.telegram === contact.contact_value ||
+          additionalContacts.url === contact.contact_value);
+        
+        setActiveContact({
+          contact_type: contact.contact_type,
+          contact_value: contact.contact_value,
+          student_id: studentWithActiveContact ? student?.id : undefined
+        });
+      } else {
+        setActiveContact(null);
+      }
+    } catch (err) {
+      console.error('Ошибка загрузки активного контакта:', err);
+      setActiveContact(null);
+    }
+  };
+
+  const handleActiveContactClick = async () => {
+    if (!activeContact || !student) return;
+    
+    if (activeContact.student_id === student.id) {
+      await executePriorContactAction(student);
+    } else {
+      const contactType = activeContact.contact_type?.toLowerCase();
+      const contactValue = activeContact.contact_value;
+      
+      switch (contactType) {
+        case 'telegram':
+          await handleOpenTelegram(contactValue);
+          break;
+        case 'url':
+          await handleOpenUrl(contactValue);
+          break;
+        case 'call':
+          await handleCall();
+          break;
+        case 'sms':
+          await handleSendSms();
+          break;
+        default:
+          setSnackbar({ open: true, message: 'Неизвестный тип контакта', severity: 'warning' });
+      }
+    }
+  };
+
+  // ========== МЕНЮ КОНТАКТОВ ==========
+  const handleContactMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorElContactMenu(event.currentTarget);
+  };
+
+  const handleContactMenuClose = () => {
+    setAnchorElContactMenu(null);
+  };
+
+  const handleContactAction = async (action: string) => {
+    handleContactMenuClose();
+    switch (action) {
+      case 'call':
+        await handleCall();
+        break;
+      case 'sms':
+        await handleSendSms();
+        break;
+      case 'telegram':
+        // Telegram из дополнительных контактов или по номеру телефона
+        const telegramContact = additionalContacts.telegram || student?.phone;
+        if (telegramContact) {
+          await handleOpenTelegram(telegramContact);
+        } else {
+          setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+        }
+        break;
+      case 'url':
+        const url = additionalContacts.url;
+        if (url) await handleOpenUrl(url);
+        else setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
+        break;
     }
   };
 
@@ -704,152 +862,6 @@ const StudentDetailPage: React.FC = () => {
     }
   };
 
-  const handleOpenLink = (url: string) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      window.open(url, '_blank');
-    } else {
-      window.open('https://' + url, '_blank');
-    }
-  };
-
-  // Функция для открытия Telegram с учетом настроек
-  const handleOpenTelegram = async (telegramContact: string) => {
-    if (!telegramContact) {
-      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
-      return;
-    }
-    
-    const targetDevice = communicationSettings.telegram_open_on;
-
-    if (targetDevice === 'pc') {
-      // Открываем на ПК - прямой вызов
-      openTelegramDesktop(telegramContact);
-    } else {
-      // Открываем на телефоне - через WebSocket
-      try {
-        const result = await apiService.openTelegramViaWebSocket(student!.id, telegramContact);
-        
-        if (result.success) {
-          if (result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.target_device === 'mobile') {
-            setSnackbar({ 
-              open: true, 
-              message: `📱 Telegram открывается на телефоне`, 
-              severity: 'success' 
-            });
-          } else {
-            openTelegramDesktop(telegramContact);
-          }
-        } else {
-          openTelegramDesktop(telegramContact);
-        }
-      } catch (err) {
-        openTelegramDesktop(telegramContact);
-      }
-    }
-  };
-
-  const handleOpenVk = async (vkContact: string) => {
-    if (!vkContact) {
-      setSnackbar({ open: true, message: 'VK контакт не указан', severity: 'warning' });
-      return;
-    }
-    
-    try {
-      const result = await apiService.openVkViaWebSocket(student!.id, vkContact);
-      
-      if (result.success) {
-        if (result.target_device === 'pc' && result.data?.url) {
-          window.open(result.data.url, '_blank');
-        } else if (result.target_device === 'mobile') {
-          setSnackbar({ 
-            open: true, 
-            message: `📱 VK открывается на телефоне`, 
-            severity: 'success' 
-          });
-        }
-      } else {
-        window.open(`https://vk.com/${vkContact}`, '_blank');
-      }
-    } catch (err) {
-      window.open(`https://vk.com/${vkContact}`, '_blank');
-    }
-  };
-
-  const handleOpenUrl = async (url: string) => {
-    if (!url) {
-      setSnackbar({ open: true, message: 'Ссылка не указана', severity: 'warning' });
-      return;
-    }
-    
-    const targetDevice = communicationSettings.url_open_on;
-
-    if (targetDevice === 'pc') {
-      // Открываем на ПК
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        window.open(url, '_blank');
-      } else {
-        window.open('https://' + url, '_blank');
-      }
-    } else {
-      // Открываем на телефоне - через WebSocket
-      try {
-        const result = await apiService.openUrlViaWebSocket(student!.id, url);
-        
-        if (result.success) {
-          if (result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.target_device === 'mobile') {
-            setSnackbar({ 
-              open: true, 
-              message: `🌐 Ссылка открывается на телефоне`, 
-              severity: 'success' 
-            });
-          }
-        } else {
-          if (url.startsWith('http://') || url.startsWith('https://')) {
-            window.open(url, '_blank');
-          } else {
-            window.open('https://' + url, '_blank');
-          }
-        }
-      } catch (err) {
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-          window.open(url, '_blank');
-        } else {
-          window.open('https://' + url, '_blank');
-        }
-      }
-    }
-  };
-
-  const handleActiveContactUse = async () => {
-    if (!student) return;
-    
-    try {
-      const result = await apiService.useActiveContact(student.id);
-      
-      if (result.success) {
-        if (result.target_device === 'pc' && result.data?.url) {
-          window.open(result.data.url, '_blank');
-        } else if (result.target_device === 'mobile') {
-          setSnackbar({ 
-            open: true, 
-            message: `📱 ${result.message}`, 
-            severity: 'success' 
-          });
-        }
-      } else if (result.fallback) {
-        window.confirm(`Мобильное приложение не подключено. ${result.message}`);
-      } else {
-        setSnackbar({ open: true, message: result.message, severity: 'error' });
-      }
-    } catch (err: any) {
-      setSnackbar({ open: true, message: 'Ошибка', severity: 'error' });
-    }
-  };
-
   const handleSaveAdditionalContacts = async () => {
     try {
       await apiService.updateStudent(student!.id, {
@@ -865,7 +877,6 @@ const StudentDetailPage: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    loadActiveContact();
     loadCommunicationSettings();
   }, [id]);
 
@@ -876,6 +887,10 @@ const StudentDetailPage: React.FC = () => {
       loadStudentApplications();
     }
   }, [student]);
+
+  useEffect(() => {
+    loadActiveContact();
+  }, [additionalContacts, student]);
 
   const loadData = async () => {
     if (!id) return;
@@ -1301,6 +1316,8 @@ const StudentDetailPage: React.FC = () => {
   const hasPriorContact = !!priorContact;
   const isUrlContact = priorContact === 'ссылка';
   const isTelegramContact = priorContact === 'телеграмм';
+  const hasTelegram = !!additionalContacts.telegram;
+  const hasUrl = !!additionalContacts.url;
 
   return (
     <Container maxWidth="lg" className={styles.innerContainer}>
@@ -1346,25 +1363,39 @@ const StudentDetailPage: React.FC = () => {
         </Box>
 
         <Box className={styles.headerActions}>
+          {/* Кнопка выбора способа связи */}
+          <Tooltip title="Связаться со студентом">
+            <IconButton onClick={handleContactMenuOpen}>
+              <img 
+                src={require('../icons/link.png')} 
+                alt="Связаться" 
+                style={{ width: 24, height: 24 }}
+              />
+            </IconButton>
+          </Tooltip>
+
+          {/* Кнопка активного контакта (звезда) */}
           <Tooltip title={isActiveContactEnabledForThisStudent ? "Выключить активный контакт" : "Сделать активным контактом"}>
             <IconButton 
               onClick={isActiveContactEnabledForThisStudent ? handleDisableActiveContact : handleEnableActiveContact}
               disabled={isActiveContactLoading || (!hasPriorContact && !isActiveContactEnabledForThisStudent)}
-              className={isActiveContactEnabledForThisStudent ? styles.activeContactBtn : ''}
             >
               {isActiveContactLoading ? (
                 <CircularProgress size={20} />
               ) : (
                 <StarIcon 
-                  className={isActiveContactEnabledForThisStudent ? styles.starActive : styles.starInactive}
-                  sx={{ fontSize: 28 }}
+                  sx={{ 
+                    fontSize: 28, 
+                    color: isActiveContactEnabledForThisStudent ? '#FFD700' : 'rgba(0, 0, 0, 0.54)' 
+                  }} 
                 />
               )}
             </IconButton>
           </Tooltip>
 
-          {activeContact && (
-            <Tooltip title={`Активный контакт: ${getActiveContactLabel()}`}>
+          {/* Глобальный активный контакт (если есть и он не для этого студента) */}
+          {activeContact && activeContact.student_id !== student.id && (
+            <Tooltip title={`Активный контакт: ${activeContact.contact_type === 'telegram' ? 'Telegram' : activeContact.contact_type === 'url' ? 'Ссылка' : activeContact.contact_type === 'call' ? 'Звонок' : 'SMS'}`}>
               <IconButton onClick={handleActiveContactClick}>
                 <img 
                   src={require('../icons/link.png')} 
@@ -1407,6 +1438,42 @@ const StudentDetailPage: React.FC = () => {
           )}
         </Box>
       </Paper>
+
+      {/* Меню выбора способа связи */}
+      <Menu
+        anchorEl={anchorElContactMenu}
+        open={Boolean(anchorElContactMenu)}
+        onClose={handleContactMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleContactAction('call')} disabled={!student?.phone}>
+          <ListItemIcon><CallIcon sx={{ color: '#4CAF50' }} /></ListItemIcon>
+          <ListItemText primary="Позвонить" secondary={student?.phone || 'Номер не указан'} />
+        </MenuItem>
+        <MenuItem onClick={() => handleContactAction('sms')} disabled={!student?.phone}>
+          <ListItemIcon><SmsIcon sx={{ color: '#2196F3' }} /></ListItemIcon>
+          <ListItemText primary="SMS" secondary={student?.phone || 'Номер не указан'} />
+        </MenuItem>
+        <MenuItem onClick={() => handleContactAction('telegram')} disabled={!hasTelegram && !student?.phone}>
+          <ListItemIcon><TelegramIcon sx={{ color: '#26A5E4' }} /></ListItemIcon>
+          <ListItemText 
+            primary="Telegram" 
+            secondary={
+              hasTelegram 
+                ? additionalContacts.telegram 
+                : (student?.phone ? `По номеру: ${student.phone}` : 'Номер не указан')
+            } 
+          />
+        </MenuItem>
+        <MenuItem onClick={() => handleContactAction('url')} disabled={!hasUrl}>
+          <ListItemIcon><LinkIcon sx={{ color: '#9C27B0' }} /></ListItemIcon>
+          <ListItemText 
+            primary="Открыть ссылку" 
+            secondary={hasUrl ? (additionalContacts.url?.length > 30 ? `${additionalContacts.url?.substring(0, 30)}...` : additionalContacts.url) : 'Ссылка не указана'} 
+          />
+        </MenuItem>
+      </Menu>
       
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
@@ -1444,11 +1511,9 @@ const StudentDetailPage: React.FC = () => {
                 ) : (
                   <>
                     <Typography sx={{ flex: 1 }}>{student.phone || '—'}</Typography>
-                    {student.phone && (
-                      <Button size="small" startIcon={<CallIcon />} onClick={handleCall}>
-                        Позвонить
-                      </Button>
-                    )}
+                    <Button size="small" startIcon={<CallIcon />} onClick={handleCall}>
+                      Позвонить
+                    </Button>
                   </>
                 )}
               </Box>
@@ -1471,11 +1536,9 @@ const StudentDetailPage: React.FC = () => {
                 ) : (
                   <>
                     <Typography sx={{ flex: 1 }}>{student.phone || '—'}</Typography>
-                    {student.phone && (
-                      <Button size="small" startIcon={<SmsIcon />} onClick={handleSendSms}>
-                        SMS
-                      </Button>
-                    )}
+                    <Button size="small" startIcon={<SmsIcon />} onClick={handleSendSms}>
+                      SMS
+                    </Button>
                   </>
                 )}
               </Box>
@@ -1523,37 +1586,42 @@ const StudentDetailPage: React.FC = () => {
                 )}
               </Box>
 
-              {Object.keys(additionalContacts).length > 0 && !isEditMode && (
-                <Box className={styles.additionalContactsContainer}>
-                  <Typography variant="caption" color="text.secondary">
-                    Дополнительные контакты:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
-                    {Object.entries(additionalContacts).map(([key, value]) => {
-                      if (key === 'telegram') {
-                        return (
-                          <SquareChip
-                            key={key}
-                            size="small"
-                            icon={<TelegramIcon />}
-                            label={`Telegram: ${value}`}
-                            onClick={() => handleOpenTelegram(value)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        );
+              {/* Дополнительные контакты - ТУТ ВСЕГДА ВИДЕН TELEGRAM КАК ССЫЛКА */}
+              <Box className={styles.additionalContactsContainer}>
+                <Typography variant="caption" color="text.secondary">
+                  Дополнительные контакты:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+                  {/* Telegram - всегда отображается, даже если не указан в доп.контактах */}
+                  <SquareChip
+                    size="small"
+                    icon={<TelegramIcon />}
+                    label={additionalContacts.telegram ? `Telegram: ${additionalContacts.telegram}` : 'Telegram (по номеру телефона)'}
+                    onClick={() => {
+                      const telegramContact = additionalContacts.telegram || student?.phone;
+                      if (telegramContact) {
+                        handleOpenTelegram(telegramContact);
+                      } else {
+                        setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
                       }
-                      if (key === 'url') {
-                        return (
-                          <SquareChip
-                            key={key}
-                            size="small"
-                            icon={<LinkIcon />}
-                            label={`Ссылка: ${value.substring(0, 30)}${value.length > 30 ? '...' : ''}`}
-                            onClick={() => handleOpenUrl(value)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        );
-                      }
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  
+                  {/* Ссылка, если есть */}
+                  {additionalContacts.url && (
+                    <SquareChip
+                      size="small"
+                      icon={<LinkIcon />}
+                      label={`Ссылка: ${additionalContacts.url.substring(0, 30)}${additionalContacts.url.length > 30 ? '...' : ''}`}
+                      onClick={() => handleOpenUrl(additionalContacts.url)}
+                      sx={{ cursor: 'pointer' }}
+                    />
+                  )}
+                  
+                  {/* Другие контакты */}
+                  {Object.entries(additionalContacts).map(([key, value]) => {
+                    if (key !== 'telegram' && key !== 'url') {
                       return (
                         <SquareChip
                           key={key}
@@ -1561,10 +1629,18 @@ const StudentDetailPage: React.FC = () => {
                           label={`${key}: ${value}`}
                         />
                       );
-                    })}
-                  </Box>
+                    }
+                    return null;
+                  })}
+                  
+                  {/* Если нет дополнительных контактов, показываем заглушку */}
+                  {Object.keys(additionalContacts).length === 0 && (
+                    <Typography variant="caption" color="text.secondary">
+                      Нет дополнительных контактов. Нажмите "Доп. контакты" чтобы добавить.
+                    </Typography>
+                  )}
                 </Box>
-              )}
+              </Box>
             </CardContent>
           </Card>
         </Grid>
@@ -1860,12 +1936,12 @@ const StudentDetailPage: React.FC = () => {
         <DialogContent className={styles.dialogContent}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField
-              label="Telegram"
+              label="Telegram username"
               value={additionalContacts.telegram || ''}
               onChange={(e) => setAdditionalContacts({ ...additionalContacts, telegram: e.target.value })}
               fullWidth
-              placeholder="@username или номер телефона"
-              helperText="Можно указать @username или номер телефона для поиска в Telegram"
+              placeholder="@username"
+              helperText="Введите username для Telegram (например, @durov)"
             />
             <TextField
               label="Ссылка (URL)"
