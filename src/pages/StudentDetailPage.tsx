@@ -526,25 +526,28 @@ const StudentDetailPage: React.FC = () => {
     if (targetDevice === 'pc') {
       openTelegramDesktop(telegramContact);
     } else {
+      if (!student?.id) {
+        openTelegramDesktop(telegramContact);
+        return;
+      }
+      
       try {
-        const result = await apiService.openTelegramViaWebSocket(student!.id, telegramContact);
+        const result = await apiService.openTelegramViaWebSocket(student.id, telegramContact);
         
-        if (result.success) {
-          if (result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.target_device === 'mobile') {
-            setSnackbar({ 
-              open: true, 
-              message: `📱 Telegram открывается на телефоне`, 
-              severity: 'success' 
-            });
-          } else {
-            openTelegramDesktop(telegramContact);
-          }
-        } else {
-          openTelegramDesktop(telegramContact);
+        if (result.success && result.target_device === 'mobile') {
+          setSnackbar({ 
+            open: true, 
+            message: `📱 Telegram открывается на телефоне`, 
+            severity: 'success' 
+          });
+          return;
         }
+        
+        // Если не удалось открыть на телефоне - используем ПК версию
+        openTelegramDesktop(telegramContact);
+        
       } catch (err) {
+        console.error('WebSocket error:', err);
         openTelegramDesktop(telegramContact);
       }
     }
