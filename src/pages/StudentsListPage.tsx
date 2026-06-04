@@ -469,7 +469,6 @@ const StudentsListPage: React.FC = () => {
     }
   };
 
-  // Обработка звонка через WebSocket
   const handleCall = async (phoneNumber: string, studentId?: number) => {
     if (!phoneNumber) {
       setSnackbar({ open: true, message: 'Номер телефона не указан', severity: 'warning' });
@@ -545,44 +544,44 @@ const StudentsListPage: React.FC = () => {
   };
 
   const handleTelegramOpen = async (telegramContact: string, studentId?: number) => {
-    if (!telegramContact) {
-      setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+  if (!telegramContact) {
+    setSnackbar({ open: true, message: 'Telegram контакт не указан', severity: 'warning' });
+    return;
+  }
+
+  const targetDevice = communicationSettings.telegram_open_on;
+
+  if (targetDevice === 'pc') {
+    openTelegramDesktop(telegramContact);
+  } else {
+    // Если нет studentId или настройка на телефон, но телефон не работает
+    if (!studentId) {
+      // Нет ID студента - открываем на ПК
+      openTelegramDesktop(telegramContact);
       return;
     }
-
-    const targetDevice = communicationSettings.telegram_open_on;
-
-    if (targetDevice === 'pc') {
-      openTelegramDesktop(telegramContact);
-    } else {
-      if (!studentId) {
-        setSnackbar({ open: true, message: 'ID студента не указан для WebSocket', severity: 'error' });
+    
+    try {
+      const result = await apiService.openTelegramViaWebSocket(studentId, telegramContact);
+      
+      if (result.success && result.target_device === 'mobile') {
+        // Успешно открыли на телефоне
+        setSnackbar({ 
+          open: true, 
+          message: `📱 Telegram открывается на телефоне`, 
+          severity: 'success' 
+        });
         return;
       }
+      openTelegramDesktop(telegramContact);
       
-      try {
-        const result = await apiService.openTelegramViaWebSocket(studentId, telegramContact);
-        
-        if (result.success) {
-          if (result.target_device === 'pc' && result.data?.url) {
-            window.open(result.data.url, '_blank');
-          } else if (result.target_device === 'mobile') {
-            setSnackbar({ 
-              open: true, 
-              message: `📱 Telegram открывается на телефоне`, 
-              severity: 'success' 
-            });
-          }
-        } else {
-          openTelegramDesktop(telegramContact);
-        }
-      } catch (err) {
-        openTelegramDesktop(telegramContact);
-      }
+    } catch (err) {
+      // При любой ошибке WebSocket используем ПК версию
+      console.error('WebSocket error:', err);
+      openTelegramDesktop(telegramContact);
     }
-  };
-
-  // ==================== ЗАГРУЗКА ДАННЫХ ====================
+  }
+};
 
   const loadActiveContact = async () => {
     try {
