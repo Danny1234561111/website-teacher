@@ -1365,18 +1365,6 @@ const StudentDetailPage: React.FC = () => {
           )}
         </Box>
 
-        <Box className={styles.headerActions}>
-          {/* Кнопка выбора способа связи */}
-          <Tooltip title="Связаться со студентом">
-            <IconButton onClick={handleContactMenuOpen}>
-              <img 
-                src={require('../icons/link.png')} 
-                alt="Связаться" 
-                style={{ width: 24, height: 24 }}
-              />
-            </IconButton>
-          </Tooltip>
-
           {/* Кнопка активного контакта (звезда) */}
           <Tooltip title={isActiveContactEnabledForThisStudent ? "Выключить активный контакт" : "Сделать активным контактом"}>
             <IconButton 
