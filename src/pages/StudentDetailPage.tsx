@@ -1365,6 +1365,7 @@ const StudentDetailPage: React.FC = () => {
           )}
         </Box>
 
+        <Box className={styles.headerActions}>
           {/* Кнопка активного контакта (звезда) */}
           <Tooltip title={isActiveContactEnabledForThisStudent ? "Выключить активный контакт" : "Сделать активным контактом"}>
             <IconButton 
