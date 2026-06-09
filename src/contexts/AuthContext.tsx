@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api';
 import { User } from '../types';
@@ -20,24 +21,19 @@ export const useAuth = () => {
   return context;
 };
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const checkAuth = async (): Promise<boolean> => {
     try {
-      // При HttpOnly cookie нет необходимости проверять токен на клиенте
-      // Просто пытаемся получить профиль - сервер проверит cookie
+      // Пробуем получить профиль с сервера (cookie отправится автоматически)
       const profile = await apiService.getProfile();
       setUser(profile);
-      console.log('Пользователь авторизован:', profile.email);
+      console.log('✅ Пользователь авторизован:', profile.email);
       return true;
     } catch (error) {
-      console.error('Ошибка проверки авторизации:', error);
+      console.log('❌ Не авторизован или сессия истекла');
       setUser(null);
       return false;
     }
@@ -48,10 +44,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const response = await apiService.login({ email, password });
       setUser(response.user);
-      apiService.saveCredentials(email, password);
-      console.log('Успешный вход:', response.user.email);
+      console.log('✅ Успешный вход:', response.user.email);
     } catch (error) {
-      console.error('Ошибка входа:', error);
+      console.error('❌ Ошибка входа:', error);
       throw error;
     } finally {
       setIsLoading(false);
@@ -63,15 +58,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await apiService.logout();
       setUser(null);
-      console.log('Выход выполнен');
+      console.log('✅ Выход выполнен');
     } catch (error) {
-      console.error('Ошибка выхода:', error);
+      console.error('❌ Ошибка выхода:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
+    // Проверяем сохраненного пользователя в localStorage
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        console.error('Error parsing saved user:', e);
+      }
+    }
+    
+    // Проверяем валидность сессии на сервере
     const initAuth = async () => {
       setIsLoading(true);
       await checkAuth();
