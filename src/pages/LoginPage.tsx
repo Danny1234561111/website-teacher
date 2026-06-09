@@ -184,10 +184,10 @@ const LoginPage: React.FC = () => {
                 Тестовые данные:
               </Typography>
               <Typography variant="body2" color="text.secondary" align="center">
-                Email: admin@example.com
+                Email: admin@university.com
               </Typography>
               <Typography variant="body2" color="text.secondary" align="center">
-                Пароль: password
+                Пароль: admin123
               </Typography>
             </CardContent>
           </Card>
