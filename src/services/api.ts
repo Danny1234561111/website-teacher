@@ -1,5 +1,5 @@
 // src/services/api.ts
-import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { 
   LoginCredentials, 
   AuthResponse, 
@@ -22,11 +22,8 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-      withCredentials: true,  // ✅ Отправляет HttpOnly cookie
+      withCredentials: true,  // Важно для HttpOnly cookie
     });
-
-    // ❌ УБИРАЕМ интерсептор для добавления Bearer токена
-    // Теперь токен в HttpOnly cookie, его не нужно добавлять вручную
 
     this.api.interceptors.response.use(
       (response) => response,
@@ -40,15 +37,12 @@ class ApiService {
     );
   }
 
-  // ❌ УБИРАЕМ setToken и getToken - они не нужны для HttpOnly cookie
-
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await this.api.post('/api/auth/web/login', {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
     });
     
-    // ✅ Токен уже в HttpOnly cookie, не нужно сохранять!
     if (response.data.user) {
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
@@ -56,7 +50,6 @@ class ApiService {
   }
 
   async getProfile(): Promise<User> {
-    // ✅ Токен отправляется автоматически в cookie
     const response = await this.api.get('/api/auth/web/me');
     localStorage.setItem('user', JSON.stringify(response.data));
     return response.data;
