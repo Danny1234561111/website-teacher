@@ -15,7 +15,6 @@ const API_BASE_URL = 'http://158.160.67.3:8000';
 
 class ApiService {
   private api: AxiosInstance;
-  private token: string | null = null;
 
   constructor() {
     this.api = axios.create({
@@ -23,6 +22,7 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
+      withCredentials: true,
     });
 
     this.api.interceptors.request.use(
@@ -49,63 +49,46 @@ class ApiService {
   }
 
   setToken(token: string | null) {
-    this.token = token;
     if (token) {
-      localStorage.setItem('access_token', token);
+      sessionStorage.setItem('access_token', token);
     } else {
-      localStorage.removeItem('access_token');
+      sessionStorage.removeItem('access_token');
     }
   }
 
   getToken(): string | null {
-    if (this.token) return this.token;
-    const stored = localStorage.getItem('access_token');
-    if (stored) {
-      this.token = stored;
-      return stored;
-    }
-    return null;
+    return sessionStorage.getItem('access_token');
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await this.api.post('/api/auth/login', {
+    const response = await this.api.post('/api/auth/web/login', {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
     });
     
-    if (response.data.access_token) {
-      this.setToken(response.data.access_token);
+    if (response.data.user) {
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     return response.data;
   }
 
   async getProfile(): Promise<User> {
-    const token = this.getToken();
-    if (!token) {
-      throw new Error('Нет токена');
-    }
-    const response = await this.api.get('/api/auth/me', { params: { token } });
+    const response = await this.api.get('/api/auth/web/me');
     localStorage.setItem('user', JSON.stringify(response.data));
     return response.data;
   }
 
   async logout(): Promise<void> {
-    const token = this.getToken();
-    if (token) {
-      try {
-        await this.api.post('/api/auth/logout', null, { params: { token } });
-      } catch (error) {
-        console.error('Logout error:', error);
-      }
+    try {
+      await this.api.post('/api/auth/web/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
     }
     this.setToken(null);
     localStorage.removeItem('user');
     localStorage.removeItem('saved_email');
     localStorage.removeItem('saved_password');
   }
-
-  // ========== СТУДЕНТЫ ==========
 
   async getStudents(params?: {
     skip?: number;
@@ -143,39 +126,37 @@ class ApiService {
     if (params?.decision_status && params.decision_status.length > 0) cleanParams.decision_status = params.decision_status;
     if (params?.documents_status && params.documents_status.length > 0) cleanParams.documents_status = params.documents_status;
     
-    const response = await this.api.get('/api/students', { params: cleanParams });
+    const response = await this.api.get('/api/students/web', { params: cleanParams });
     return response.data;
   }
 
   async getStudent(id: number): Promise<Student> {
-    const response = await this.api.get(`/api/students/${id}`);
+    const response = await this.api.get(`/api/students/web/${id}`);
     return response.data;
   }
 
   async getStudentApplications(studentId: number): Promise<StudentApplication[]> {
-    const response = await this.api.get(`/api/students/${studentId}/applications`);
+    const response = await this.api.get(`/api/students/web/${studentId}/applications`);
     return response.data;
   }
 
   async getCompetitiveInfoForSpeciality(studentId: number, specialityId: number): Promise<CompetitiveInfo> {
-    const response = await this.api.get(`/api/students/${studentId}/competitive-info/${specialityId}`);
+    const response = await this.api.get(`/api/students/web/${studentId}/competitive-info/${specialityId}`);
     return response.data;
   }
 
   async getStudentCompetitiveInfo(studentId: number): Promise<CompetitiveInfo> {
-    const response = await this.api.get(`/api/students/${studentId}/competitive-info`);
+    const response = await this.api.get(`/api/students/web/${studentId}/competitive-info`);
     return response.data;
   }
 
-  // ========== СТАТИСТИКА ПО ГРУППАМ ==========
-
   async getGroupStatistics(): Promise<GroupStatistics[]> {
-    const response = await this.api.get('/api/students/statistics/groups');
+    const response = await this.api.get('/api/students/web/statistics/groups');
     return response.data;
   }
 
   async createStudent(studentData: Partial<Student>): Promise<Student> {
-    const response = await this.api.post('/api/students', {
+    const response = await this.api.post('/api/students/web', {
       full_name: studentData.full_name,
       russian_student_id: studentData.russian_student_id,
       phone: studentData.phone,
@@ -228,15 +209,13 @@ class ApiService {
     
     console.log('📤 Отправка обновления студента:', { id, dataToSend });
     
-    const response = await this.api.put(`/api/students/${id}`, dataToSend);
+    const response = await this.api.put(`/api/students/web/${id}`, dataToSend);
     return response.data;
   }
 
   async deleteStudent(id: number): Promise<void> {
-    await this.api.delete(`/api/students/${id}`);
+    await this.api.delete(`/api/students/web/${id}`);
   }
-
-  // ========== КОММУНИКАЦИИ ==========
 
   async getStudentCommunications(
     studentId: number,
@@ -244,7 +223,7 @@ class ApiService {
     offset: number = 0
   ): Promise<Communication[]> {
     const response = await this.api.get(
-      `/api/students/${studentId}/communications`,
+      `/api/students/web/${studentId}/communications`,
       { params: { limit, offset } }
     );
     return response.data;
@@ -261,7 +240,7 @@ class ApiService {
     }
   ): Promise<Communication> {
     const response = await this.api.post(
-      `/api/students/${studentId}/communications`,
+      `/api/students/web/${studentId}/communications`,
       data
     );
     return response.data;
@@ -278,14 +257,14 @@ class ApiService {
     }>
   ): Promise<Communication> {
     const response = await this.api.put(
-      `/api/students/communications/${commId}`,
+      `/api/students/web/communications/${commId}`,
       data
     );
     return response.data;
   }
 
   async deleteCommunication(commId: number): Promise<void> {
-    await this.api.delete(`/api/students/communications/${commId}`);
+    await this.api.delete(`/api/students/web/communications/${commId}`);
   }
 
   async getCommunicationStats(daysBack: number = 30): Promise<{
@@ -295,17 +274,15 @@ class ApiService {
     recent_communications: Communication[];
     period_days: number;
   }> {
-    const response = await this.api.get('/api/students/communications/stats', {
+    const response = await this.api.get('/api/students/web/communications/stats', {
       params: { days_back: daysBack }
     });
     return response.data;
   }
 
-  // ========== СПРАВОЧНИКИ ==========
-
   async getDepartments(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/departments');
+      const response = await this.api.get('/api/admin/web/departments');
       return response.data;
     } catch {
       return [];
@@ -314,7 +291,7 @@ class ApiService {
 
   async getSpecialities(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/specialities');
+      const response = await this.api.get('/api/admin/web/specialities');
       return response.data;
     } catch {
       return [];
@@ -323,18 +300,16 @@ class ApiService {
 
   async getProfiles(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/profiles');
+      const response = await this.api.get('/api/admin/web/profiles');
       return response.data;
     } catch {
       return [];
     }
   }
 
-  // ========== АКТИВНЫЙ КОНТАКТ ==========
-
   async getActiveContact(): Promise<{ contact_type: string; contact_value: string; updated_at?: string } | null> {
     try {
-      const response = await this.api.get('/api/user/contact/active/get');
+      const response = await this.api.get('/api/user/contact/web/active/get');
       return response.data;
     } catch (error) {
       return null;
@@ -342,7 +317,7 @@ class ApiService {
   }
 
   async setActiveContact(contactType: string, contactValue: string): Promise<{ contact_type: string; contact_value: string; updated_at?: string }> {
-    const response = await this.api.post('/api/user/contact/active/set', {
+    const response = await this.api.post('/api/user/contact/web/active/set', {
       contact_type: contactType,
       contact_value: contactValue,
     });
@@ -350,10 +325,8 @@ class ApiService {
   }
 
   async deleteActiveContact(): Promise<void> {
-    await this.api.delete('/api/user/contact/active/delete');
+    await this.api.delete('/api/user/contact/web/active/delete');
   }
-
-  // ========== EXCEL ИМПОРТ ==========
 
   async importExcel(
     file: File,
@@ -368,7 +341,7 @@ class ApiService {
       formData.append('replace_ids', JSON.stringify(replaceIds));
     }
     
-    const response = await this.api.post('/api/excel-import/upload', formData, {
+    const response = await this.api.post('/api/excel-import/web/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -376,8 +349,6 @@ class ApiService {
     
     return response.data;
   }
-
-  // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
 
   async checkAuth(): Promise<boolean> {
     try {
@@ -412,7 +383,7 @@ class ApiService {
     vk_open_on: string;
     url_open_on: string;
   }> {
-    const response = await this.api.get('/api/user/contact/settings');
+    const response = await this.api.get('/api/user/contact/web/settings');
     return response.data;
   }
 
@@ -425,7 +396,7 @@ class ApiService {
     vk_open_on: string;
     url_open_on: string;
   }> {
-    const response = await this.api.put('/api/user/contact/settings', settings);
+    const response = await this.api.put('/api/user/contact/web/settings', settings);
     return response.data;
   }
 
@@ -436,7 +407,7 @@ class ApiService {
     message: string;
     fallback?: string;
   }> {
-    const response = await this.api.post('/api/user/contact/call', {
+    const response = await this.api.post('/api/user/contact/web/call', {
       student_id: studentId,
       phone_number: phoneNumber,
     });
@@ -450,7 +421,7 @@ class ApiService {
     message: string;
     fallback?: string;
   }> {
-    const response = await this.api.post('/api/user/contact/sms', {
+    const response = await this.api.post('/api/user/contact/web/sms', {
       student_id: studentId,
       phone_number: phoneNumber,
       message_text: messageText,
@@ -465,7 +436,7 @@ class ApiService {
     message: string;
     data?: { url: string };
   }> {
-    const response = await this.api.post('/api/user/contact/telegram', {
+    const response = await this.api.post('/api/user/contact/web/telegram', {
       student_id: studentId,
       telegram_contact: telegramContact,
     });
@@ -479,7 +450,7 @@ class ApiService {
     message: string;
     data?: { url: string };
   }> {
-    const response = await this.api.post('/api/user/contact/vk', {
+    const response = await this.api.post('/api/user/contact/web/vk', {
       student_id: studentId,
       vk_contact: vkContact,
     });
@@ -493,7 +464,7 @@ class ApiService {
     message: string;
     data?: { url: string };
   }> {
-    const response = await this.api.post('/api/user/contact/url', {
+    const response = await this.api.post('/api/user/contact/web/url', {
       student_id: studentId,
       url: url,
     });
@@ -509,7 +480,7 @@ class ApiService {
     data?: { url: string };
     fallback?: string;
   }> {
-    const response = await this.api.post('/api/user/contact/active/use', null, {
+    const response = await this.api.post('/api/user/contact/web/active/use', null, {
       params: { student_id: studentId }
     });
     return response.data;
