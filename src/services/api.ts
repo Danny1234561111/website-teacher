@@ -37,7 +37,10 @@ class ApiService {
     );
   }
 
+  // ========== АУТЕНТИФИКАЦИЯ (использует /web эндпоинты для установки cookie) ==========
+  
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
+    // Используем /web/login для установки cookie
     const response = await this.api.post('/api/auth/web/login', {
       email: credentials.email.trim().toLowerCase(),
       password: credentials.password,
@@ -50,6 +53,7 @@ class ApiService {
   }
 
   async getProfile(): Promise<User> {
+    // Используем /web/me для получения профиля из cookie
     const response = await this.api.get('/api/auth/web/me');
     localStorage.setItem('user', JSON.stringify(response.data));
     return response.data;
@@ -66,6 +70,8 @@ class ApiService {
     localStorage.removeItem('saved_password');
   }
 
+  // ========== СТУДЕНТЫ (обычные эндпоинты, cookie отправляется автоматически) ==========
+  
   async getStudents(params?: {
     skip?: number;
     limit?: number;
@@ -102,37 +108,40 @@ class ApiService {
     if (params?.decision_status && params.decision_status.length > 0) cleanParams.decision_status = params.decision_status;
     if (params?.documents_status && params.documents_status.length > 0) cleanParams.documents_status = params.documents_status;
     
-    const response = await this.api.get('/api/students/web', { params: cleanParams });
+    // Убираем /web - теперь обычный эндпоинт
+    const response = await this.api.get('/api/students', { params: cleanParams });
     return response.data;
   }
 
   async getStudent(id: number): Promise<Student> {
-    const response = await this.api.get(`/api/students/web/${id}`);
+    // Убираем /web - теперь обычный эндпоинт
+    const response = await this.api.get(`/api/students/${id}`);
     return response.data;
   }
 
   async getStudentApplications(studentId: number): Promise<StudentApplication[]> {
-    const response = await this.api.get(`/api/students/web/${studentId}/applications`);
+    // Убираем /web - теперь обычный эндпоинт
+    const response = await this.api.get(`/api/students/${studentId}/applications`);
     return response.data;
   }
 
   async getCompetitiveInfoForSpeciality(studentId: number, specialityId: number): Promise<CompetitiveInfo> {
-    const response = await this.api.get(`/api/students/web/${studentId}/competitive-info/${specialityId}`);
+    const response = await this.api.get(`/api/students/${studentId}/competitive-info/${specialityId}`);
     return response.data;
   }
 
   async getStudentCompetitiveInfo(studentId: number): Promise<CompetitiveInfo> {
-    const response = await this.api.get(`/api/students/web/${studentId}/competitive-info`);
+    const response = await this.api.get(`/api/students/${studentId}/competitive-info`);
     return response.data;
   }
 
   async getGroupStatistics(): Promise<GroupStatistics[]> {
-    const response = await this.api.get('/api/students/web/statistics/groups');
+    const response = await this.api.get('/api/students/statistics/groups');
     return response.data;
   }
 
   async createStudent(studentData: Partial<Student>): Promise<Student> {
-    const response = await this.api.post('/api/students/web', {
+    const response = await this.api.post('/api/students', {
       full_name: studentData.full_name,
       russian_student_id: studentData.russian_student_id,
       phone: studentData.phone,
@@ -185,12 +194,12 @@ class ApiService {
     
     console.log('📤 Отправка обновления студента:', { id, dataToSend });
     
-    const response = await this.api.put(`/api/students/web/${id}`, dataToSend);
+    const response = await this.api.put(`/api/students/${id}`, dataToSend);
     return response.data;
   }
 
   async deleteStudent(id: number): Promise<void> {
-    await this.api.delete(`/api/students/web/${id}`);
+    await this.api.delete(`/api/students/${id}`);
   }
 
   async getStudentCommunications(
@@ -199,7 +208,7 @@ class ApiService {
     offset: number = 0
   ): Promise<Communication[]> {
     const response = await this.api.get(
-      `/api/students/web/${studentId}/communications`,
+      `/api/students/${studentId}/communications`,
       { params: { limit, offset } }
     );
     return response.data;
@@ -216,7 +225,7 @@ class ApiService {
     }
   ): Promise<Communication> {
     const response = await this.api.post(
-      `/api/students/web/${studentId}/communications`,
+      `/api/students/${studentId}/communications`,
       data
     );
     return response.data;
@@ -232,15 +241,12 @@ class ApiService {
       notes: string;
     }>
   ): Promise<Communication> {
-    const response = await this.api.put(
-      `/api/students/web/communications/${commId}`,
-      data
-    );
+    const response = await this.api.put(`/api/students/communications/${commId}`, data);
     return response.data;
   }
 
   async deleteCommunication(commId: number): Promise<void> {
-    await this.api.delete(`/api/students/web/communications/${commId}`);
+    await this.api.delete(`/api/students/communications/${commId}`);
   }
 
   async getCommunicationStats(daysBack: number = 30): Promise<{
@@ -250,15 +256,17 @@ class ApiService {
     recent_communications: Communication[];
     period_days: number;
   }> {
-    const response = await this.api.get('/api/students/web/communications/stats', {
+    const response = await this.api.get('/api/students/communications/stats', {
       params: { days_back: daysBack }
     });
     return response.data;
   }
 
+  // ========== АДМИН (обычные эндпоинты) ==========
+  
   async getDepartments(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/web/departments');
+      const response = await this.api.get('/api/admin/departments');
       return response.data;
     } catch {
       return [];
@@ -267,7 +275,7 @@ class ApiService {
 
   async getSpecialities(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/web/specialities');
+      const response = await this.api.get('/api/admin/specialities');
       return response.data;
     } catch {
       return [];
@@ -276,16 +284,18 @@ class ApiService {
 
   async getProfiles(): Promise<any[]> {
     try {
-      const response = await this.api.get('/api/admin/web/profiles');
+      const response = await this.api.get('/api/admin/profiles');
       return response.data;
     } catch {
       return [];
     }
   }
 
+  // ========== КОНТАКТЫ (обычные эндпоинты) ==========
+  
   async getActiveContact(): Promise<{ contact_type: string; contact_value: string; updated_at?: string } | null> {
     try {
-      const response = await this.api.get('/api/user/contact/web/active/get');
+      const response = await this.api.get('/api/user/contact/active/get');
       return response.data;
     } catch (error) {
       return null;
@@ -293,7 +303,7 @@ class ApiService {
   }
 
   async setActiveContact(contactType: string, contactValue: string): Promise<{ contact_type: string; contact_value: string; updated_at?: string }> {
-    const response = await this.api.post('/api/user/contact/web/active/set', {
+    const response = await this.api.post('/api/user/contact/active/set', {
       contact_type: contactType,
       contact_value: contactValue,
     });
@@ -301,9 +311,119 @@ class ApiService {
   }
 
   async deleteActiveContact(): Promise<void> {
-    await this.api.delete('/api/user/contact/web/active/delete');
+    await this.api.delete('/api/user/contact/active/delete');
   }
 
+  async getCommunicationSettings(): Promise<{
+    telegram_open_on: string;
+    vk_open_on: string;
+    url_open_on: string;
+  }> {
+    const response = await this.api.get('/api/user/contact/settings');
+    return response.data;
+  }
+
+  async updateCommunicationSettings(settings: {
+    telegram_open_on?: string;
+    vk_open_on?: string;
+    url_open_on?: string;
+  }): Promise<{
+    telegram_open_on: string;
+    vk_open_on: string;
+    url_open_on: string;
+  }> {
+    const response = await this.api.put('/api/user/contact/settings', settings);
+    return response.data;
+  }
+
+  async callStudentViaWebSocket(studentId: number, phoneNumber: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/call', {
+      student_id: studentId,
+      phone_number: phoneNumber,
+    });
+    return response.data;
+  }
+
+  async sendSmsViaWebSocket(studentId: number, phoneNumber: string, messageText?: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/sms', {
+      student_id: studentId,
+      phone_number: phoneNumber,
+      message_text: messageText,
+    });
+    return response.data;
+  }
+
+  async openTelegramViaWebSocket(studentId: number, telegramContact: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/telegram', {
+      student_id: studentId,
+      telegram_contact: telegramContact,
+    });
+    return response.data;
+  }
+
+  async openVkViaWebSocket(studentId: number, vkContact: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/vk', {
+      student_id: studentId,
+      vk_contact: vkContact,
+    });
+    return response.data;
+  }
+
+  async openUrlViaWebSocket(studentId: number, url: string): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    data?: { url: string };
+  }> {
+    const response = await this.api.post('/api/user/contact/url', {
+      student_id: studentId,
+      url: url,
+    });
+    return response.data;
+  }
+
+  async useActiveContact(studentId: number): Promise<{
+    success: boolean;
+    action: string;
+    target_device: string;
+    message: string;
+    student_name?: string;
+    data?: { url: string };
+    fallback?: string;
+  }> {
+    const response = await this.api.post('/api/user/contact/active/use', null, {
+      params: { student_id: studentId }
+    });
+    return response.data;
+  }
+
+  // ========== EXCEL IMPORT ==========
+  
   async importExcel(
     file: File,
     duplicateStrategy: string = 'skip',
@@ -317,7 +437,7 @@ class ApiService {
       formData.append('replace_ids', JSON.stringify(replaceIds));
     }
     
-    const response = await this.api.post('/api/excel-import/web/upload', formData, {
+    const response = await this.api.post('/api/excel-import/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -326,6 +446,8 @@ class ApiService {
     return response.data;
   }
 
+  // ========== ВСПОМОГАТЕЛЬНЫЕ ==========
+  
   async checkAuth(): Promise<boolean> {
     try {
       await this.getProfile();
@@ -352,114 +474,6 @@ class ApiService {
   clearCredentials() {
     localStorage.removeItem('saved_email');
     localStorage.removeItem('saved_password');
-  }
-  
-  async getCommunicationSettings(): Promise<{
-    telegram_open_on: string;
-    vk_open_on: string;
-    url_open_on: string;
-  }> {
-    const response = await this.api.get('/api/user/contact/web/settings');
-    return response.data;
-  }
-
-  async updateCommunicationSettings(settings: {
-    telegram_open_on?: string;
-    vk_open_on?: string;
-    url_open_on?: string;
-  }): Promise<{
-    telegram_open_on: string;
-    vk_open_on: string;
-    url_open_on: string;
-  }> {
-    const response = await this.api.put('/api/user/contact/web/settings', settings);
-    return response.data;
-  }
-
-  async callStudentViaWebSocket(studentId: number, phoneNumber: string): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    fallback?: string;
-  }> {
-    const response = await this.api.post('/api/user/contact/web/call', {
-      student_id: studentId,
-      phone_number: phoneNumber,
-    });
-    return response.data;
-  }
-
-  async sendSmsViaWebSocket(studentId: number, phoneNumber: string, messageText?: string): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    fallback?: string;
-  }> {
-    const response = await this.api.post('/api/user/contact/web/sms', {
-      student_id: studentId,
-      phone_number: phoneNumber,
-      message_text: messageText,
-    });
-    return response.data;
-  }
-
-  async openTelegramViaWebSocket(studentId: number, telegramContact: string): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    data?: { url: string };
-  }> {
-    const response = await this.api.post('/api/user/contact/web/telegram', {
-      student_id: studentId,
-      telegram_contact: telegramContact,
-    });
-    return response.data;
-  }
-
-  async openVkViaWebSocket(studentId: number, vkContact: string): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    data?: { url: string };
-  }> {
-    const response = await this.api.post('/api/user/contact/web/vk', {
-      student_id: studentId,
-      vk_contact: vkContact,
-    });
-    return response.data;
-  }
-
-  async openUrlViaWebSocket(studentId: number, url: string): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    data?: { url: string };
-  }> {
-    const response = await this.api.post('/api/user/contact/web/url', {
-      student_id: studentId,
-      url: url,
-    });
-    return response.data;
-  }
-
-  async useActiveContact(studentId: number): Promise<{
-    success: boolean;
-    action: string;
-    target_device: string;
-    message: string;
-    student_name?: string;
-    data?: { url: string };
-    fallback?: string;
-  }> {
-    const response = await this.api.post('/api/user/contact/web/active/use', null, {
-      params: { student_id: studentId }
-    });
-    return response.data;
   }
 }
 
