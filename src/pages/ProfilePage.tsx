@@ -143,9 +143,9 @@ const ProfilePage: React.FC = () => {
       const response = await fetch('http://158.160.67.3:8000/api/parser/run', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiService.getToken()}`,
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // 👈 ВАЖНО: отправляет HttpOnly cookie
       });
       const data = await response.json();
       setSnackbar({ open: true, message: 'Парсер запущен', severity: 'success' });

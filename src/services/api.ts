@@ -22,43 +22,25 @@ class ApiService {
       headers: {
         'Content-Type': 'application/json',
       },
-      withCredentials: true,
+      withCredentials: true,  // ✅ Отправляет HttpOnly cookie
     });
 
-    this.api.interceptors.request.use(
-      (config: InternalAxiosRequestConfig) => {
-        const token = this.getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
+    // ❌ УБИРАЕМ интерсептор для добавления Bearer токена
+    // Теперь токен в HttpOnly cookie, его не нужно добавлять вручную
 
     this.api.interceptors.response.use(
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          this.setToken(null);
           localStorage.removeItem('user');
+          window.location.href = '/login';
         }
         return Promise.reject(error);
       }
     );
   }
 
-  setToken(token: string | null) {
-    if (token) {
-      sessionStorage.setItem('access_token', token);
-    } else {
-      sessionStorage.removeItem('access_token');
-    }
-  }
-
-  getToken(): string | null {
-    return sessionStorage.getItem('access_token');
-  }
+  // ❌ УБИРАЕМ setToken и getToken - они не нужны для HttpOnly cookie
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await this.api.post('/api/auth/web/login', {
@@ -66,6 +48,7 @@ class ApiService {
       password: credentials.password,
     });
     
+    // ✅ Токен уже в HttpOnly cookie, не нужно сохранять!
     if (response.data.user) {
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
@@ -73,6 +56,7 @@ class ApiService {
   }
 
   async getProfile(): Promise<User> {
+    // ✅ Токен отправляется автоматически в cookie
     const response = await this.api.get('/api/auth/web/me');
     localStorage.setItem('user', JSON.stringify(response.data));
     return response.data;
@@ -84,7 +68,6 @@ class ApiService {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    this.setToken(null);
     localStorage.removeItem('user');
     localStorage.removeItem('saved_email');
     localStorage.removeItem('saved_password');

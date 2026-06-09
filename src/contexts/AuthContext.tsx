@@ -1,4 +1,3 @@
-// src/contexts/AuthContext.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiService } from '../services/api';
 import { User } from '../types';
@@ -31,15 +30,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const checkAuth = async (): Promise<boolean> => {
     try {
-      // Проверяем, есть ли токен
-      const token = apiService.getToken();
-      if (!token) {
-        console.log('Нет токена, пользователь не авторизован');
-        setUser(null);
-        return false;
-      }
-      
-      console.log('Проверяем токен...');
+      // При HttpOnly cookie нет необходимости проверять токен на клиенте
+      // Просто пытаемся получить профиль - сервер проверит cookie
       const profile = await apiService.getProfile();
       setUser(profile);
       console.log('Пользователь авторизован:', profile.email);
@@ -47,7 +39,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Ошибка проверки авторизации:', error);
       setUser(null);
-      apiService.setToken(null);
       return false;
     }
   };
@@ -73,6 +64,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await apiService.logout();
       setUser(null);
       console.log('Выход выполнен');
+    } catch (error) {
+      console.error('Ошибка выхода:', error);
     } finally {
       setIsLoading(false);
     }
